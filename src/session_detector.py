@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from os import stat_result
@@ -20,6 +21,50 @@ class SessionInfo:
             "C:\\Users\\Reimo\\Desktop\\pyton\\pantalla",
             "C:\\Users\\Reimo\\Desktop\\pyton pantalla",
         )
+
+
+@dataclass
+class ProjectInfo:
+    folder_name: str
+    display_name: str
+    last_modified: datetime
+    session_count: int
+    folder_path: Path
+
+
+def _read_cwd_from_jsonl(jsonl_path: Path) -> str | None:
+    try:
+        with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i > 20:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                cwd = event.get("cwd")
+                if isinstance(cwd, str) and cwd:
+                    return cwd
+    except OSError:
+        return None
+    return None
+
+
+def _folder_display_name(folder_path: Path) -> str:
+    for jsonl in folder_path.glob("*.jsonl"):
+        cwd = _read_cwd_from_jsonl(jsonl)
+        if cwd:
+            return os.path.basename(cwd) or cwd
+    name = folder_path.name
+    if name.startswith("C--"):
+        name = name[3:]
+    parts = name.split("-")
+    while parts and parts[0] in ("Users", "Reimo", "Desktop", "Documents", "Downloads", "Pictures"):
+        parts.pop(0)
+    return " ".join(parts) if parts else folder_path.name
 
 
 def get_session_title(jsonl_path: Path, max_chars: int = 60) -> str:
@@ -72,6 +117,51 @@ def detect_active_session(projects_dir: Path) -> Path | None:
     if not pairs:
         return None
     return max(pairs, key=lambda pair: pair[1].st_mtime)[0]
+
+
+def list_projects(projects_dir: Path) -> list[ProjectInfo]:
+    if not projects_dir.exists():
+        return []
+    projects: list[ProjectInfo] = []
+    for folder in projects_dir.iterdir():
+        if not folder.is_dir():
+            continue
+        jsonls = list(folder.glob("*.jsonl"))
+        if not jsonls:
+            continue
+        mtimes = []
+        for j in jsonls:
+            st = _stat_safely(j)
+            if st is not None:
+                mtimes.append(st.st_mtime)
+        if not mtimes:
+            continue
+        projects.append(ProjectInfo(
+            folder_name=folder.name,
+            display_name=_folder_display_name(folder),
+            last_modified=datetime.fromtimestamp(max(mtimes)),
+            session_count=len(jsonls),
+            folder_path=folder,
+        ))
+    projects.sort(key=lambda p: p.last_modified, reverse=True)
+    return projects
+
+
+def list_sessions_in_folder(folder_path: Path, limit: int = 20, with_titles: bool = True) -> list[SessionInfo]:
+    if not folder_path.exists() or not folder_path.is_dir():
+        return []
+    pairs = [(p, st) for p in folder_path.glob("*.jsonl") if (st := _stat_safely(p)) is not None]
+    pairs.sort(key=lambda pair: pair[1].st_mtime, reverse=True)
+    return [
+        SessionInfo(
+            path=p,
+            folder_name=p.parent.name,
+            last_modified=datetime.fromtimestamp(st.st_mtime),
+            session_uuid=p.stem,
+            title=get_session_title(p) if with_titles else "",
+        )
+        for p, st in pairs[:limit]
+    ]
 
 
 def list_recent_sessions(projects_dir: Path, limit: int = 10, with_titles: bool = True) -> list[SessionInfo]:

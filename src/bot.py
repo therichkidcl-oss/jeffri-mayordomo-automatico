@@ -24,7 +24,7 @@ from src.config import (
 from src.formatters import PhotoMessage, TextMessage, format_event
 from src.groq_client import GroqAllKeysFailed, GroqClient, GroqError
 from src.security import is_destructive, requires_whitelist
-from src.session_detector import detect_active_session, list_recent_sessions
+from src.session_detector import detect_active_session, list_projects, list_recent_sessions, list_sessions_in_folder
 from src.transcript_watcher import TranscriptWatcher
 
 logging.basicConfig(
@@ -43,6 +43,7 @@ class BotState:
         self.pending_destructive: dict[str, str] = {}
         self.pending_enhanced: dict[str, dict[str, str]] = {}
         self.pending_switch: dict[str, str] = {}
+        self.pending_project: dict[str, str] = {}
         self.controller = ClaudeController()
         self.send_lock = asyncio.Lock()
         self.groq: GroqClient | None = GroqClient(GROQ_API_KEYS) if GROQ_API_KEYS else None
@@ -102,6 +103,28 @@ async def cmd_sesiones(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @requires_whitelist
+async def cmd_proyectos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    projects = list_projects(CLAUDE_PROJECTS_DIR)
+    if not projects:
+        await update.message.reply_text("No hay proyectos detectados, Sir Rich.")
+        return
+
+    buttons = []
+    state.pending_project.clear()
+    for p in projects:
+        token = uuid.uuid4().hex[:8]
+        state.pending_project[token] = str(p.folder_path)
+        label = f"📁 {p.display_name} · {p.session_count}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"proj:open:{token}")])
+
+    await update.message.reply_text(
+        "🗂 *Proyectos, Sir Rich:*\nToque uno para ver sus sesiones.",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+@requires_whitelist
 async def cmd_parar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = True
     await update.message.reply_text("⏸️ Reenvío pausado, Sir Rich. /seguir para reanudar.")
@@ -147,7 +170,8 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Comandos:*\n"
         "/start - bienvenida + sesión activa\n"
         "/estado - estado del bot\n"
-        "/sesiones - lista sesiones + botones para cambiar\n"
+        "/proyectos - lista de proyectos agrupados (recomendado)\n"
+        "/sesiones - lista plana de últimas 10 sesiones\n"
         "/captura - screenshot de la ventana de Claude\n"
         "/stop - interrumpe a Claude (envía ESC)\n"
         "/parar - pausa el reenvío hacia Telegram\n"
@@ -265,6 +289,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_enhanced_callback(query, decision, token)
     elif family == "switch":
         await _handle_switch_callback(query, decision, token)
+    elif family == "proj":
+        await _handle_project_open(query, decision, token)
 
 
 async def _handle_destructive_callback(query, decision: str, token: str):
@@ -303,6 +329,32 @@ async def _handle_enhanced_callback(query, decision: str, token: str):
         await _do_send(query, text)
     else:
         await query.edit_message_text("❌ Cancelado, Sir Rich.")
+
+
+async def _handle_project_open(query, decision: str, token: str):
+    folder_path_str = state.pending_project.pop(token, None)
+    if not folder_path_str:
+        await query.edit_message_text("⚠️ Esa lista expiró, Sir Rich. Pida /proyectos de nuevo.")
+        return
+    from pathlib import Path
+    folder = Path(folder_path_str)
+    sessions = list_sessions_in_folder(folder, limit=15)
+    if not sessions:
+        await query.edit_message_text(f"⚠️ No hay sesiones en este proyecto, Sir Rich.")
+        return
+
+    buttons = []
+    for s in sessions:
+        title = s.title or s.session_uuid[:8]
+        switch_token = uuid.uuid4().hex[:8]
+        state.pending_switch[switch_token] = title
+        buttons.append([InlineKeyboardButton(f"💬 {title[:55]}", callback_data=f"switch:go:{switch_token}")])
+
+    await query.edit_message_text(
+        f"📂 *Sesiones de {folder.name[:40]}, Sir Rich:*\nToque una para cambiar.",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 async def _handle_switch_callback(query, decision: str, token: str):
@@ -482,13 +534,14 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("estado", cmd_estado))
     app.add_handler(CommandHandler("sesiones", cmd_sesiones))
+    app.add_handler(CommandHandler("proyectos", cmd_proyectos))
     app.add_handler(CommandHandler("parar", cmd_parar))
     app.add_handler(CommandHandler("seguir", cmd_seguir))
     app.add_handler(CommandHandler("captura", cmd_captura))
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
-    app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch):"))
+    app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch|proj):"))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice_or_audio))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))
