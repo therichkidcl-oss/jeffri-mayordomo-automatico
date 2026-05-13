@@ -6,7 +6,9 @@ from io import BytesIO
 import mss
 import mss.tools
 import pyperclip
+import win32api
 import win32clipboard
+import win32con
 from PIL import Image
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
@@ -192,41 +194,38 @@ class ClaudeController:
             window.set_focus()
         except Exception as e:
             raise ClaudeControllerError(f"No puedo enfocar la ventana: {e}")
-        time.sleep(0.4)
+        time.sleep(0.5)
 
         send_keys("{ESC}")
-        time.sleep(0.3)
-        send_keys("{ESC}")
-        time.sleep(0.3)
+        time.sleep(0.2)
 
-        query_text = title.strip()
-        if len(query_text) > 50:
-            cut = query_text[:50].rsplit(" ", 1)[0]
-            query_text = cut if cut else query_text[:50]
-        logger.info(f"Switch: buscando '{query_text}' (titulo orig: '{title[:80]}')")
+        target = title.strip().lower()
+        logger.info(f"Switch: buscando '{target}' en sidebar por OCR")
 
-        search_btn = self._find_search_button(window)
-        if search_btn is None:
-            logger.info("No encontré botón Search, probando atajo Ctrl+K")
-            send_keys("^k")
-        else:
-            try:
-                search_btn.click_input()
-                logger.info("Click en botón Search")
-            except Exception as e:
-                logger.warning(f"Click en Search falló, fallback a Ctrl+K: {e!r}")
-                send_keys("^k")
+        rect = window.rectangle()
+        sidebar_w = min(320, rect.right - rect.left)
+        sidebar_bbox = {
+            "left": rect.left,
+            "top": rect.top,
+            "width": sidebar_w,
+            "height": rect.bottom - rect.top,
+        }
 
-        time.sleep(1.0)
+        with mss.mss() as sct:
+            shot = sct.grab(sidebar_bbox)
+            png_bytes = mss.tools.to_png(shot.rgb, shot.size)
 
-        pyperclip.copy(query_text)
-        send_keys("^v", pause=0.05)
-        time.sleep(1.5)
+        coords = _ocr_find_text(png_bytes, target, sidebar_bbox["left"], sidebar_bbox["top"])
+        if coords is None:
+            raise ClaudeControllerError(
+                f"No encontré '{title[:40]}' en el sidebar via OCR. ¿Está visible?"
+            )
 
-        send_keys("{ENTER}")
-        time.sleep(1.2)
-
-        logger.info(f"Switch completado para '{query_text}'")
+        cx, cy = coords
+        logger.info(f"OCR match para '{target}' en pixel ({cx}, {cy})")
+        _click_at(cx, cy)
+        time.sleep(0.8)
+        logger.info(f"Switch completado para '{target}'")
 
     async def dump_sidebar_items(self, max_items: int = 80) -> list[str]:
         return await asyncio.to_thread(self._dump_sidebar_items_sync, max_items)
@@ -249,6 +248,78 @@ class ClaudeController:
                 if len(out) >= max_items:
                     break
         return out
+
+
+def _click_at(x: int, y: int) -> None:
+    win32api.SetCursorPos((int(x), int(y)))
+    time.sleep(0.05)
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+    time.sleep(0.05)
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+
+def _ocr_find_text(png_bytes: bytes, query: str, offset_x: int, offset_y: int) -> tuple[int, int] | None:
+    try:
+        import winocr
+    except ImportError:
+        logger.error("winocr no está instalado")
+        return None
+
+    img = Image.open(BytesIO(png_bytes))
+    try:
+        result = asyncio.run(winocr.recognize_pil(img, "es-ES"))
+    except Exception as e:
+        logger.warning(f"OCR falló con es-ES: {e!r}, reintentando sin lang")
+        try:
+            result = asyncio.run(winocr.recognize_pil(img))
+        except Exception as e2:
+            logger.error(f"OCR falló completamente: {e2!r}")
+            return None
+
+    lines = result.get("lines", []) if isinstance(result, dict) else []
+    query_norm = query.strip().lower()
+    query_words = [w for w in query_norm.split() if w]
+
+    candidates: list[tuple[int, int, int, str]] = []
+    for line in lines:
+        text = (line.get("text") or "").strip()
+        if not text:
+            continue
+        text_lower = text.lower()
+        score = 0
+        if text_lower == query_norm:
+            score = 1000
+        elif query_norm in text_lower:
+            score = 900 - abs(len(text_lower) - len(query_norm))
+        elif text_lower in query_norm and len(text_lower) >= 3:
+            score = 800 - abs(len(text_lower) - len(query_norm))
+        elif query_words:
+            text_words = text_lower.split()
+            overlap = sum(1 for w in query_words if w in text_words)
+            if overlap >= len(query_words) * 0.6:
+                score = int(500 * overlap / max(len(query_words), 1))
+
+        if score > 0:
+            words = line.get("words", [])
+            if words:
+                xs = [w.get("bounding_rect", {}).get("x", 0) for w in words]
+                ys = [w.get("bounding_rect", {}).get("y", 0) for w in words]
+                ws = [w.get("bounding_rect", {}).get("width", 0) for w in words]
+                hs = [w.get("bounding_rect", {}).get("height", 0) for w in words]
+                if xs and ys:
+                    cx = (min(xs) + max(x + w for x, w in zip(xs, ws))) // 2
+                    cy = (min(ys) + max(y + h for y, h in zip(ys, hs))) // 2
+                    candidates.append((score, cx, cy, text))
+
+    if not candidates:
+        sample = [line.get("text", "")[:50] for line in lines[:10]]
+        logger.warning(f"OCR no encontró '{query}'. Textos leídos: {sample}")
+        return None
+
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    score, cx, cy, matched = candidates[0]
+    logger.info(f"OCR best match score={score} '{matched[:60]}' @ ({cx},{cy})")
+    return (offset_x + cx, offset_y + cy)
 
 
 def _copy_image_to_clipboard(image_bytes: bytes) -> None:
