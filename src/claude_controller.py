@@ -258,6 +258,42 @@ def _click_at(x: int, y: int) -> None:
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
 
+def _normalize_for_match(s: str) -> str:
+    s = s.lower()
+    cleaned = "".join(c if c.isalnum() or c.isspace() else " " for c in s)
+    return " ".join(cleaned.split())
+
+
+def _fuzzy_score(query: str, text: str) -> int:
+    qn = _normalize_for_match(query)
+    tn = _normalize_for_match(text)
+    if not qn or not tn:
+        return 0
+
+    if qn == tn:
+        return 1000
+    if qn in tn:
+        return 900 - min(50, abs(len(tn) - len(qn)))
+    if len(tn) >= 3 and tn in qn:
+        return 800 - min(50, abs(len(tn) - len(qn)))
+
+    qwords = qn.split()
+    twords = tn.split()
+    if not qwords:
+        return 0
+    found = 0
+    for qw in qwords:
+        for tw in twords:
+            if qw == tw or (len(qw) >= 3 and qw in tw) or (len(tw) >= 3 and tw in qw):
+                found += 1
+                break
+    if found == len(qwords):
+        return 600
+    if found >= len(qwords) * 0.6:
+        return int(400 * found / len(qwords))
+    return 0
+
+
 def _ocr_find_text(png_bytes: bytes, query: str, offset_x: int, offset_y: int) -> tuple[int, int] | None:
     try:
         import winocr
@@ -276,43 +312,47 @@ def _ocr_find_text(png_bytes: bytes, query: str, offset_x: int, offset_y: int) -
             logger.error(f"OCR falló completamente: {e2!r}")
             return None
 
-    lines = result.get("lines", []) if isinstance(result, dict) else []
-    query_norm = query.strip().lower()
-    query_words = [w for w in query_norm.split() if w]
+    try:
+        lines = list(result.lines)
+    except Exception as e:
+        logger.error(f"No pude leer result.lines: {e!r}")
+        return None
 
     candidates: list[tuple[int, int, int, str]] = []
     for line in lines:
-        text = (line.get("text") or "").strip()
+        try:
+            text = (line.text or "").strip()
+            words = list(line.words)
+        except Exception:
+            continue
         if not text:
             continue
-        text_lower = text.lower()
-        score = 0
-        if text_lower == query_norm:
-            score = 1000
-        elif query_norm in text_lower:
-            score = 900 - abs(len(text_lower) - len(query_norm))
-        elif text_lower in query_norm and len(text_lower) >= 3:
-            score = 800 - abs(len(text_lower) - len(query_norm))
-        elif query_words:
-            text_words = text_lower.split()
-            overlap = sum(1 for w in query_words if w in text_words)
-            if overlap >= len(query_words) * 0.6:
-                score = int(500 * overlap / max(len(query_words), 1))
-
-        if score > 0:
-            words = line.get("words", [])
-            if words:
-                xs = [w.get("bounding_rect", {}).get("x", 0) for w in words]
-                ys = [w.get("bounding_rect", {}).get("y", 0) for w in words]
-                ws = [w.get("bounding_rect", {}).get("width", 0) for w in words]
-                hs = [w.get("bounding_rect", {}).get("height", 0) for w in words]
-                if xs and ys:
-                    cx = (min(xs) + max(x + w for x, w in zip(xs, ws))) // 2
-                    cy = (min(ys) + max(y + h for y, h in zip(ys, hs))) // 2
+        score = _fuzzy_score(query, text)
+        if score > 0 and words:
+            try:
+                rects = []
+                for w in words:
+                    br = w.bounding_rect
+                    rects.append((br.x, br.y, br.width, br.height))
+                if rects:
+                    min_x = min(r[0] for r in rects)
+                    max_x = max(r[0] + r[2] for r in rects)
+                    min_y = min(r[1] for r in rects)
+                    max_y = max(r[1] + r[3] for r in rects)
+                    cx = int((min_x + max_x) / 2)
+                    cy = int((min_y + max_y) / 2)
                     candidates.append((score, cx, cy, text))
+            except Exception as e:
+                logger.debug(f"No pude calcular bbox para '{text}': {e!r}")
+                continue
 
     if not candidates:
-        sample = [line.get("text", "")[:50] for line in lines[:10]]
+        sample = []
+        for line in lines[:15]:
+            try:
+                sample.append((line.text or "")[:50])
+            except Exception:
+                continue
         logger.warning(f"OCR no encontró '{query}'. Textos leídos: {sample}")
         return None
 
