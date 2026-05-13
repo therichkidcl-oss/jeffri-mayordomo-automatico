@@ -1,0 +1,6 @@
+python-telegram-bot[all]>=21.0
+watchdog>=4.0
+pywinauto>=0.6.8
+python-dotenv>=1.0
+pytest>=8.0
+pytest-asyncio>=0.23
