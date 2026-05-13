@@ -15,3 +15,6 @@ def _require(name: str) -> str:
 TELEGRAM_BOT_TOKEN: str = _require("TELEGRAM_BOT_TOKEN")
 ALLOWED_USER_ID: int = int(_require("TELEGRAM_ALLOWED_USER_ID"))
 CLAUDE_PROJECTS_DIR: Path = Path(_require("CLAUDE_PROJECTS_DIR"))
+
+_groq_keys_raw = os.environ.get("GROQ_API_KEYS", "")
+GROQ_API_KEYS: list[str] = [k.strip() for k in _groq_keys_raw.split(",") if k.strip()]

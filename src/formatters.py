@@ -1,20 +1,30 @@
-import re
-from typing import Any
+import base64
+from dataclasses import dataclass
+from typing import Any, Union
 
 TG_MD_V2_SPECIAL = r"_*[]()~`>#+-=|{}.!"
 
-TOOL_ICONS = {
-    "Read": "📖",
-    "Write": "📝",
-    "Edit": "✏️",
-    "Bash": "▶️",
-    "Grep": "🔍",
-    "Glob": "📂",
-    "WebFetch": "🌐",
-    "WebSearch": "🌐",
-    "TodoWrite": "📋",
-    "Task": "🤖",
-}
+SCREENSHOT_TOOLS = (
+    "mcp__playwright__browser_take_screenshot",
+    "mcp__Claude_in_Chrome__gif_creator",
+    "mcp__Claude_Preview__preview_screenshot",
+    "screenshot",
+    "Screenshot",
+)
+
+
+@dataclass
+class TextMessage:
+    text: str
+
+
+@dataclass
+class PhotoMessage:
+    data: bytes
+    caption: str | None = None
+
+
+Message = Union[TextMessage, PhotoMessage]
 
 
 def escape_md_v2(text: str) -> str:
@@ -27,59 +37,37 @@ def truncate(text: str, limit: int = 4000) -> str:
     return text[:limit] + "\n... (truncado)"
 
 
-def _sanitize_code(text: str) -> str:
-    """Replace backticks with single quotes to prevent breaking Telegram code spans."""
-    return text.replace("`", "'")
+def _extract_images_from_content(content: Any) -> list[bytes]:
+    images: list[bytes] = []
+    if not isinstance(content, list):
+        return images
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "image":
+            continue
+        source = block.get("source", {})
+        if source.get("type") == "base64" and "data" in source:
+            try:
+                images.append(base64.b64decode(source["data"]))
+            except Exception:
+                pass
+    return images
 
 
-def _format_tool_use(name: str, tool_input: dict) -> str:
-    icon = TOOL_ICONS.get(name, "🔧")
-
-    if name == "Read":
-        return f"{icon} *{name}*: `{_sanitize_code(tool_input.get('file_path', '?'))}`"
-    if name == "Write":
-        return f"{icon} *{name}*: `{_sanitize_code(tool_input.get('file_path', '?'))}`"
-    if name == "Edit":
-        path = _sanitize_code(tool_input.get("file_path", "?"))
-        old = _sanitize_code(tool_input.get("old_string", "")[:200])
-        new = _sanitize_code(tool_input.get("new_string", "")[:200])
-        return f"{icon} *{name}*: `{path}`\n```diff\n- {old}\n+ {new}\n```"
-    if name == "Bash":
-        cmd = _sanitize_code(tool_input.get("command", ""))
-        return f"{icon} *Bash*:\n```\n{cmd}\n```"
-    if name == "Grep":
-        return f"{icon} *Grep*: `{_sanitize_code(tool_input.get('pattern', '?'))}`"
-    if name == "Glob":
-        return f"{icon} *Glob*: `{_sanitize_code(tool_input.get('pattern', '?'))}`"
-    if name in ("WebFetch", "WebSearch"):
-        return f"{icon} *{name}*: {tool_input.get('url') or tool_input.get('query', '?')}"
-
-    summary = _sanitize_code(str(tool_input)[:200])
-    return f"{icon} *{name}*: `{summary}`"
-
-
-def _format_tool_result(content: Any) -> str:
-    if isinstance(content, list):
-        text = "\n".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
-    else:
-        text = str(content)
-    text = _sanitize_code(truncate(text, 3500))
-    return f"```\n{text}\n```"
-
-
-def format_event(event: dict) -> list[str]:
+def format_event(event: dict) -> list[Message]:
     event_type = event.get("type")
 
     if event_type in ("queue-operation", "attachment", "summary"):
         return []
 
     if event_type == "assistant":
-        out: list[str] = []
+        out: list[Message] = []
         content = event.get("message", {}).get("content", [])
         if isinstance(content, str):
             text = content.strip()
             if text:
-                out.append(truncate(text, 4000))
+                out.append(TextMessage(truncate(text, 4000)))
             return out
         if not isinstance(content, list):
             return []
@@ -90,18 +78,22 @@ def format_event(event: dict) -> list[str]:
             if block_type == "text":
                 text = block.get("text", "").strip()
                 if text:
-                    out.append(truncate(text, 4000))
-            elif block_type == "tool_use":
-                out.append(_format_tool_use(block.get("name", "?"), block.get("input", {})))
+                    out.append(TextMessage(truncate(text, 4000)))
         return out
 
     if event_type == "user":
         out = []
         content = event.get("message", {}).get("content", [])
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "tool_result":
-                    out.append(_format_tool_result(block.get("content", "")))
+        if not isinstance(content, list):
+            return []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_result":
+                continue
+            result_content = block.get("content", "")
+            for img_bytes in _extract_images_from_content(result_content):
+                out.append(PhotoMessage(data=img_bytes, caption="📸 Screenshot del navegador"))
         return out
 
     return []

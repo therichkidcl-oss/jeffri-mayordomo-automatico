@@ -1,4 +1,11 @@
-from src.formatters import format_event, truncate, escape_md_v2
+import base64
+from src.formatters import (
+    format_event,
+    truncate,
+    escape_md_v2,
+    TextMessage,
+    PhotoMessage,
+)
 
 
 def test_format_assistant_text():
@@ -8,62 +15,27 @@ def test_format_assistant_text():
     }
     result = format_event(event)
     assert len(result) == 1
-    assert "Hola, soy Claude" in result[0]
+    assert isinstance(result[0], TextMessage)
+    assert "Hola, soy Claude" in result[0].text
 
 
-def test_format_tool_use_read():
+def test_format_skips_tool_use():
     event = {
         "type": "assistant",
         "message": {
             "content": [
-                {"type": "tool_use", "name": "Read", "input": {"file_path": "src/bot.py"}}
+                {"type": "tool_use", "name": "Read", "input": {"file_path": "src/bot.py"}},
+                {"type": "text", "text": "Listo"},
             ]
         },
     }
     result = format_event(event)
-    assert "📖" in result[0]
-    assert "Read" in result[0]
-    assert "src/bot.py" in result[0]
+    assert len(result) == 1
+    assert isinstance(result[0], TextMessage)
+    assert result[0].text == "Listo"
 
 
-def test_format_tool_use_edit():
-    event = {
-        "type": "assistant",
-        "message": {
-            "content": [
-                {
-                    "type": "tool_use",
-                    "name": "Edit",
-                    "input": {
-                        "file_path": "src/bot.py",
-                        "old_string": "foo",
-                        "new_string": "bar",
-                    },
-                }
-            ]
-        },
-    }
-    result = format_event(event)
-    assert "✏️" in result[0]
-    assert "Edit" in result[0]
-    assert "src/bot.py" in result[0]
-
-
-def test_format_tool_use_bash():
-    event = {
-        "type": "assistant",
-        "message": {
-            "content": [
-                {"type": "tool_use", "name": "Bash", "input": {"command": "npm test"}}
-            ]
-        },
-    }
-    result = format_event(event)
-    assert "▶️" in result[0]
-    assert "npm test" in result[0]
-
-
-def test_format_tool_result():
+def test_format_skips_tool_result_text():
     event = {
         "type": "user",
         "message": {
@@ -73,7 +45,36 @@ def test_format_tool_result():
         },
     }
     result = format_event(event)
-    assert "Salida del comando" in result[0]
+    assert result == []
+
+
+def test_format_extracts_screenshot_from_tool_result():
+    fake_png = b"\x89PNG\r\n\x1a\nfake-screenshot-bytes"
+    encoded = base64.b64encode(fake_png).decode("ascii")
+    event = {
+        "type": "user",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": encoded,
+                            },
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    result = format_event(event)
+    assert len(result) == 1
+    assert isinstance(result[0], PhotoMessage)
+    assert result[0].data == fake_png
 
 
 def test_format_ignores_queue_operations():
@@ -104,33 +105,6 @@ def test_escape_md_v2_special_chars():
     assert result == "hola\\_mundo\\*test"
 
 
-def test_format_tool_use_sanitizes_backticks_in_file_path():
-    event = {
-        "type": "assistant",
-        "message": {
-            "content": [
-                {"type": "tool_use", "name": "Read", "input": {"file_path": "src/`weird`.py"}}
-            ]
-        },
-    }
-    result = format_event(event)
-    assert "`" not in result[0].split("`")[1]
-
-
-def test_format_tool_use_sanitizes_backticks_in_bash_command():
-    event = {
-        "type": "assistant",
-        "message": {
-            "content": [
-                {"type": "tool_use", "name": "Bash", "input": {"command": "echo `date`"}}
-            ]
-        },
-    }
-    result = format_event(event)
-    fence_count = result[0].count("```")
-    assert fence_count == 2
-
-
 def test_format_assistant_content_as_string():
     event = {
         "type": "assistant",
@@ -138,7 +112,8 @@ def test_format_assistant_content_as_string():
     }
     result = format_event(event)
     assert len(result) == 1
-    assert "Texto plano sin bloques" in result[0]
+    assert isinstance(result[0], TextMessage)
+    assert result[0].text == "Texto plano sin bloques"
 
 
 def test_format_assistant_skips_non_dict_blocks():
@@ -148,7 +123,8 @@ def test_format_assistant_skips_non_dict_blocks():
     }
     result = format_event(event)
     assert len(result) == 1
-    assert "ok" in result[0]
+    assert isinstance(result[0], TextMessage)
+    assert result[0].text == "ok"
 
 
 def test_format_assistant_content_none():

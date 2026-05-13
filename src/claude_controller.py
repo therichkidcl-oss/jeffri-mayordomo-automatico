@@ -1,9 +1,13 @@
 import asyncio
 import logging
 import time
+from io import BytesIO
+
 import mss
 import mss.tools
 import pyperclip
+import win32clipboard
+from PIL import Image
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
 
@@ -88,6 +92,12 @@ class ClaudeController:
     async def send(self, text: str) -> None:
         await asyncio.to_thread(self._send_sync, text)
 
+    async def send_image(self, image_bytes: bytes, caption: str | None = None) -> None:
+        await asyncio.to_thread(self._send_image_sync, image_bytes, caption)
+
+    async def interrupt(self) -> None:
+        await asyncio.to_thread(self._interrupt_sync)
+
     async def capture(self) -> bytes:
         return await asyncio.to_thread(self._capture_sync)
 
@@ -115,17 +125,14 @@ class ClaudeController:
         logger.info(f"Captura {bbox['width']}x{bbox['height']} ({len(png_bytes)} bytes)")
         return png_bytes
 
-    def _send_sync(self, text: str) -> None:
+    def _focus_window(self) -> None:
         window = self.find_window()
-
         try:
             window.set_focus()
         except Exception as e:
             logger.warning(f"No puedo enfocar la ventana de Claude: {e!r}")
             raise ClaudeControllerError(f"No puedo enfocar la ventana de Claude: {e}")
-
         time.sleep(0.5)
-
         try:
             input_ctrl = self._find_input(window)
             input_ctrl.set_focus()
@@ -133,8 +140,41 @@ class ClaudeController:
         except ClaudeControllerError as e:
             logger.debug(f"No expuse el input via UIA, usando foco de ventana: {e}")
 
+    def _send_sync(self, text: str) -> None:
+        self._focus_window()
         pyperclip.copy(text)
         send_keys("^v", pause=0.05)
         time.sleep(0.4)
         send_keys("{ENTER}")
         logger.info(f"Mensaje enviado a Claude ({len(text)} chars): {text[:80]!r}...")
+
+    def _send_image_sync(self, image_bytes: bytes, caption: str | None) -> None:
+        self._focus_window()
+        _copy_image_to_clipboard(image_bytes)
+        send_keys("^v", pause=0.05)
+        time.sleep(0.6)
+        if caption:
+            pyperclip.copy(caption)
+            send_keys("^v", pause=0.05)
+            time.sleep(0.3)
+        send_keys("{ENTER}")
+        logger.info(f"Imagen enviada a Claude ({len(image_bytes)} bytes)" + (f" + caption: {caption[:60]!r}" if caption else ""))
+
+    def _interrupt_sync(self) -> None:
+        self._focus_window()
+        send_keys("{ESC}")
+        logger.info("Enviado ESC a Claude (interrumpir)")
+
+
+def _copy_image_to_clipboard(image_bytes: bytes) -> None:
+    img = Image.open(BytesIO(image_bytes))
+    output = BytesIO()
+    img.convert("RGB").save(output, format="BMP")
+    data = output.getvalue()[14:]
+    output.close()
+    win32clipboard.OpenClipboard()
+    try:
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+    finally:
+        win32clipboard.CloseClipboard()
