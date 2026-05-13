@@ -53,7 +53,23 @@ def _read_cwd_from_jsonl(jsonl_path: Path) -> str | None:
     return None
 
 
+def read_sessions_index(folder_path: Path) -> dict | None:
+    index_file = folder_path / "sessions-index.json"
+    if not index_file.exists():
+        return None
+    try:
+        with open(index_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _folder_display_name(folder_path: Path) -> str:
+    index = read_sessions_index(folder_path)
+    if index:
+        original_path = index.get("originalPath")
+        if isinstance(original_path, str) and original_path:
+            return os.path.basename(original_path) or original_path
     for jsonl in folder_path.glob("*.jsonl"):
         cwd = _read_cwd_from_jsonl(jsonl)
         if cwd:
@@ -126,21 +142,31 @@ def list_projects(projects_dir: Path) -> list[ProjectInfo]:
     for folder in projects_dir.iterdir():
         if not folder.is_dir():
             continue
-        jsonls = list(folder.glob("*.jsonl"))
-        if not jsonls:
-            continue
-        mtimes = []
-        for j in jsonls:
-            st = _stat_safely(j)
-            if st is not None:
-                mtimes.append(st.st_mtime)
-        if not mtimes:
-            continue
+        index = read_sessions_index(folder)
+        if index is not None:
+            entries = index.get("entries", [])
+            session_count = len(entries)
+            if session_count == 0:
+                continue
+            mtimes = [e.get("fileMtime", 0) / 1000.0 for e in entries if e.get("fileMtime")]
+            if not mtimes:
+                continue
+            last_mod = datetime.fromtimestamp(max(mtimes))
+        else:
+            jsonls = list(folder.glob("*.jsonl"))
+            if not jsonls:
+                continue
+            mtimes = [st.st_mtime for j in jsonls if (st := _stat_safely(j)) is not None]
+            if not mtimes:
+                continue
+            session_count = len(jsonls)
+            last_mod = datetime.fromtimestamp(max(mtimes))
+
         projects.append(ProjectInfo(
             folder_name=folder.name,
             display_name=_folder_display_name(folder),
-            last_modified=datetime.fromtimestamp(max(mtimes)),
-            session_count=len(jsonls),
+            last_modified=last_mod,
+            session_count=session_count,
             folder_path=folder,
         ))
     projects.sort(key=lambda p: p.last_modified, reverse=True)
@@ -150,6 +176,38 @@ def list_projects(projects_dir: Path) -> list[ProjectInfo]:
 def list_sessions_in_folder(folder_path: Path, limit: int = 20, with_titles: bool = True) -> list[SessionInfo]:
     if not folder_path.exists() or not folder_path.is_dir():
         return []
+
+    index = read_sessions_index(folder_path)
+    if index is not None:
+        entries = sorted(
+            index.get("entries", []),
+            key=lambda e: e.get("fileMtime", 0),
+            reverse=True,
+        )[:limit]
+        sessions: list[SessionInfo] = []
+        for entry in entries:
+            full_path = entry.get("fullPath")
+            if not isinstance(full_path, str):
+                continue
+            p = Path(full_path)
+            mtime_ms = entry.get("fileMtime", 0)
+            last_mod = datetime.fromtimestamp(mtime_ms / 1000.0) if mtime_ms else datetime.now()
+            first_prompt = (entry.get("firstPrompt") or "").strip()
+            title = ""
+            if with_titles:
+                if p.exists():
+                    title = get_session_title(p)
+                if not title and first_prompt:
+                    title = first_prompt[:60] + ("…" if len(first_prompt) > 60 else "")
+            sessions.append(SessionInfo(
+                path=p,
+                folder_name=folder_path.name,
+                last_modified=last_mod,
+                session_uuid=entry.get("sessionId", p.stem),
+                title=title,
+            ))
+        return sessions
+
     pairs = [(p, st) for p in folder_path.glob("*.jsonl") if (st := _stat_safely(p)) is not None]
     pairs.sort(key=lambda pair: pair[1].st_mtime, reverse=True)
     return [

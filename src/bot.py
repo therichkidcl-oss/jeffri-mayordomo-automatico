@@ -113,7 +113,7 @@ async def cmd_proyectos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.pending_project.clear()
     for p in projects:
         token = uuid.uuid4().hex[:8]
-        state.pending_project[token] = str(p.folder_path)
+        state.pending_project[token] = f"{p.folder_path}|{p.display_name}"
         label = f"📁 {p.display_name} · {p.session_count}"
         buttons.append([InlineKeyboardButton(label, callback_data=f"proj:open:{token}")])
 
@@ -332,15 +332,19 @@ async def _handle_enhanced_callback(query, decision: str, token: str):
 
 
 async def _handle_project_open(query, decision: str, token: str):
-    folder_path_str = state.pending_project.pop(token, None)
-    if not folder_path_str:
+    payload = state.pending_project.pop(token, None)
+    if not payload:
         await query.edit_message_text("⚠️ Esa lista expiró, Sir Rich. Pida /proyectos de nuevo.")
         return
     from pathlib import Path
+    folder_path_str, _, display_name = payload.partition("|")
     folder = Path(folder_path_str)
+    if not display_name:
+        display_name = folder.name
     sessions = list_sessions_in_folder(folder, limit=15)
     if not sessions:
-        await query.edit_message_text(f"⚠️ No hay sesiones en este proyecto, Sir Rich.")
+        await query.edit_message_text(f"⚠️ No hay sesiones en *{display_name}*, Sir Rich.",
+                                       parse_mode=ParseMode.MARKDOWN)
         return
 
     buttons = []
@@ -351,7 +355,7 @@ async def _handle_project_open(query, decision: str, token: str):
         buttons.append([InlineKeyboardButton(f"💬 {title[:55]}", callback_data=f"switch:go:{switch_token}")])
 
     await query.edit_message_text(
-        f"📂 *Sesiones de {folder.name[:40]}, Sir Rich:*\nToque una para cambiar.",
+        f"📂 *Sesiones de {display_name[:40]}, Sir Rich:*\nToque una para cambiar.",
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=ParseMode.MARKDOWN,
     )
