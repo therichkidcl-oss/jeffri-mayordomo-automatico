@@ -405,6 +405,9 @@ async def _handle_enhanced_callback(query, decision: str, token: str):
 
 
 async def _handle_project_open(query, decision: str, token: str):
+    if not state.claim_token(f"proj:{token}"):
+        logger.warning(f"Token proj duplicado ignorado: {token}")
+        return
     payload = state.pending_project.pop(token, None)
     if not payload:
         await query.edit_message_text("⚠️ Esa lista expiró, Sir Rich. Pida /proyectos de nuevo.")
@@ -414,24 +417,23 @@ async def _handle_project_open(query, decision: str, token: str):
     folder = Path(folder_path_str)
     if not display_name:
         display_name = folder.name
-    sessions = list_sessions_in_folder(folder, limit=15)
-    if not sessions:
-        await query.edit_message_text(f"⚠️ No hay sesiones en *{display_name}*, Sir Rich.",
-                                       parse_mode=ParseMode.MARKDOWN)
-        return
-
-    buttons = []
-    for s in sessions:
-        title = s.title or s.session_uuid[:8]
-        switch_token = uuid.uuid4().hex[:8]
-        state.pending_switch[switch_token] = title
-        buttons.append([InlineKeyboardButton(f"💬 {title[:55]}", callback_data=f"switch:go:{switch_token}")])
 
     await query.edit_message_text(
-        f"📂 *Sesiones de {display_name[:40]}, Sir Rich:*\nToque una para cambiar.",
-        reply_markup=InlineKeyboardMarkup(buttons),
+        f"🔁 Cambiando a proyecto *{display_name}*, Sir Rich...",
         parse_mode=ParseMode.MARKDOWN,
     )
+    try:
+        async with state.send_lock:
+            await state.controller.switch_session(display_name)
+        await query.message.reply_text(
+            f"✅ Cambiado al proyecto *{display_name}*, Sir Rich. Listo para escribir.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except (ClaudeNotOpenError, PCLockedError) as e:
+        await query.message.reply_text(f"❌ {e}")
+    except Exception as e:
+        logger.exception("Error cambiando proyecto")
+        await query.message.reply_text(f"❌ {e}")
 
 
 async def _handle_switch_callback(query, decision: str, token: str):

@@ -128,7 +128,7 @@ class ClaudeController:
         logger.info(f"Captura {bbox['width']}x{bbox['height']} ({len(png_bytes)} bytes)")
         return png_bytes
 
-    def _focus_window(self) -> None:
+    def _focus_window(self, dismiss_modals: bool = True) -> None:
         window = self.find_window()
         try:
             window.set_focus()
@@ -136,6 +136,9 @@ class ClaudeController:
             logger.warning(f"No puedo enfocar la ventana de Claude: {e!r}")
             raise ClaudeControllerError(f"No puedo enfocar la ventana de Claude: {e}")
         time.sleep(0.5)
+        if dismiss_modals:
+            send_keys("{ESC}")
+            time.sleep(0.2)
         try:
             input_ctrl = self._find_input(window)
             input_ctrl.set_focus()
@@ -191,9 +194,15 @@ class ClaudeController:
             raise ClaudeControllerError(f"No puedo enfocar la ventana: {e}")
         time.sleep(0.4)
 
+        send_keys("{ESC}")
+        time.sleep(0.3)
+        send_keys("{ESC}")
+        time.sleep(0.3)
+
         query_text = title.strip()
-        if len(query_text) > 60:
-            query_text = query_text[:60].rsplit(" ", 1)[0] or query_text[:60]
+        if len(query_text) > 50:
+            cut = query_text[:50].rsplit(" ", 1)[0]
+            query_text = cut if cut else query_text[:50]
         logger.info(f"Switch: buscando '{query_text}' (titulo orig: '{title[:80]}')")
 
         search_btn = self._find_search_button(window)
@@ -208,15 +217,16 @@ class ClaudeController:
                 logger.warning(f"Click en Search falló, fallback a Ctrl+K: {e!r}")
                 send_keys("^k")
 
-        time.sleep(0.8)
+        time.sleep(1.0)
 
         pyperclip.copy(query_text)
         send_keys("^v", pause=0.05)
-        time.sleep(1.2)
+        time.sleep(1.5)
 
         send_keys("{ENTER}")
-        time.sleep(0.8)
-        logger.info(f"Switch enviado para '{query_text}'")
+        time.sleep(1.2)
+
+        logger.info(f"Switch completado para '{query_text}'")
 
     async def dump_sidebar_items(self, max_items: int = 80) -> list[str]:
         return await asyncio.to_thread(self._dump_sidebar_items_sync, max_items)
