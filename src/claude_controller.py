@@ -1,8 +1,10 @@
 import asyncio
 import logging
+import time
 import pyperclip
 from pywinauto import Desktop
 from pywinauto.findwindows import ElementNotFoundError
+from pywinauto.keyboard import send_keys
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,6 @@ class ClaudeController:
             logger.warning(f"No puedo enfocar la ventana de Claude: {e!r}")
             raise ClaudeControllerError(f"No puedo enfocar la ventana de Claude: {e}")
 
-        import time
         time.sleep(0.3)
 
         input_ctrl = self._find_input(window)
@@ -100,7 +101,7 @@ class ClaudeController:
         time.sleep(0.2)
 
         pyperclip.copy(text)
-        input_ctrl.type_keys("^v", pause=0.05)
-        time.sleep(0.3)
-        input_ctrl.type_keys("{ENTER}")
+        send_keys("^v", pause=0.05)
+        time.sleep(0.4)
+        send_keys("{ENTER}")
         logger.info(f"Mensaje enviado a Claude ({len(text)} chars): {text[:80]!r}...")
