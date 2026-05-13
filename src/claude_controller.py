@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import time
+import mss
+import mss.tools
 import pyperclip
 from pywinauto import Desktop
 from pywinauto.findwindows import ElementNotFoundError
@@ -84,6 +86,33 @@ class ClaudeController:
 
     async def send(self, text: str) -> None:
         await asyncio.to_thread(self._send_sync, text)
+
+    async def capture(self) -> bytes:
+        return await asyncio.to_thread(self._capture_sync)
+
+    def _capture_sync(self) -> bytes:
+        window = self.find_window()
+        try:
+            window.set_focus()
+            time.sleep(0.2)
+        except Exception as e:
+            logger.debug(f"set_focus en capture falló (continúo igual): {e!r}")
+
+        rect = window.rectangle()
+        bbox = {
+            "left": rect.left,
+            "top": rect.top,
+            "width": rect.right - rect.left,
+            "height": rect.bottom - rect.top,
+        }
+        if bbox["width"] <= 0 or bbox["height"] <= 0:
+            raise ClaudeControllerError(f"Dimensiones de ventana inválidas: {bbox}")
+
+        with mss.mss() as sct:
+            sct_img = sct.grab(bbox)
+            png_bytes = mss.tools.to_png(sct_img.rgb, sct_img.size)
+        logger.info(f"Captura {bbox['width']}x{bbox['height']} ({len(png_bytes)} bytes)")
+        return png_bytes
 
     def _send_sync(self, text: str) -> None:
         window = self.find_window()

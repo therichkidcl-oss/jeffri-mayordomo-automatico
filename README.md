@@ -26,6 +26,7 @@ Antes de la primera ejecución necesitas:
 - `/start` — bienvenida + sesión activa detectada
 - `/estado` — estado del bot (pausado/activo + sesión actual)
 - `/sesiones` — lista de las 10 sesiones más recientes
+- `/captura` — screenshot de la ventana de Claude (útil para ver detalle visual)
 - `/parar` — pausa el reenvío (Claude sigue trabajando en la PC, pero Telegram no recibe)
 - `/seguir` — reanuda el reenvío
 - `/ayuda` — lista de comandos

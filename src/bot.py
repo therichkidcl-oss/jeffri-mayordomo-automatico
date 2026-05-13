@@ -85,12 +85,30 @@ async def cmd_seguir(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @requires_whitelist
+async def cmd_captura(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        png_bytes = await state.controller.capture()
+    except ClaudeNotOpenError as e:
+        await update.message.reply_text(f"❌ {e}")
+        return
+    except PCLockedError as e:
+        await update.message.reply_text(f"❌ {e}")
+        return
+    except Exception as e:
+        logger.exception("Error capturando pantalla")
+        await update.message.reply_text(f"❌ Error inesperado: {e}")
+        return
+    await update.message.reply_photo(photo=png_bytes, caption="📸 Ventana de Claude")
+
+
+@requires_whitelist
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "🤖 *TelegramClaudeBridge*\n\n"
         "/start - bienvenida + sesión activa\n"
         "/estado - estado del bot\n"
         "/sesiones - lista sesiones recientes\n"
+        "/captura - screenshot de la ventana de Claude\n"
         "/parar - pausa el reenvío\n"
         "/seguir - reanuda el reenvío\n"
         "/ayuda - este mensaje\n\n"
@@ -223,6 +241,7 @@ def main():
     app.add_handler(CommandHandler("sesiones", cmd_sesiones))
     app.add_handler(CommandHandler("parar", cmd_parar))
     app.add_handler(CommandHandler("seguir", cmd_seguir))
+    app.add_handler(CommandHandler("captura", cmd_captura))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
     app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^confirm:"))
