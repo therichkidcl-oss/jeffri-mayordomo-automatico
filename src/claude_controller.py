@@ -168,6 +168,8 @@ class ClaudeController:
         send_keys("{ESC}")
         logger.info("Enviado ESC a Claude (interrumpir)")
 
+    SIDEBAR_CONTROL_TYPES = {"ListItem", "TreeItem", "MenuItem", "Hyperlink", "Button"}
+
     def _switch_session_sync(self, title: str) -> None:
         window = self.find_window()
         try:
@@ -184,15 +186,17 @@ class ClaudeController:
         except Exception as e:
             raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
 
-        candidates: list[tuple[int, object, str]] = []
+        candidates: list[tuple[int, object, str, str]] = []
         for item in all_items:
             try:
                 name = (item.element_info.name or "").strip()
+                ctype = item.element_info.control_type or ""
             except Exception:
                 continue
             if not name or len(name) < 5:
                 continue
             name_lower = name.lower()
+            is_sidebar_type = ctype in self.SIDEBAR_CONTROL_TYPES
 
             score = 0
             if name_lower == title_lower:
@@ -201,39 +205,51 @@ class ClaudeController:
                 score = 900 - abs(len(name_lower) - len(title_lower))
             elif name_lower in title_lower:
                 score = 800 - abs(len(name_lower) - len(title_lower))
-            elif title_words:
+            elif is_sidebar_type and title_words:
                 name_words = {w for w in name_lower.split() if len(w) > 2}
                 overlap = title_words & name_words
                 if overlap:
                     ratio = len(overlap) / len(title_words)
-                    if ratio >= 0.5:
-                        score = int(500 * ratio)
+                    if ratio >= 0.6:
+                        score = int(400 * ratio)
+
+            if score > 0 and not is_sidebar_type:
+                if score < 800:
+                    continue
+                score -= 150
+
+            if score > 0 and is_sidebar_type:
+                score += 100
 
             if score > 0:
-                candidates.append((score, item, name))
+                candidates.append((score, item, name, ctype))
 
         if not candidates:
-            sample_names = []
-            for item in all_items[:200]:
+            sample = []
+            for item in all_items[:500]:
                 try:
                     n = (item.element_info.name or "").strip()
+                    ct = item.element_info.control_type or ""
                 except Exception:
                     continue
-                if n and 5 < len(n) < 100:
-                    sample_names.append(n)
-                if len(sample_names) >= 5:
+                if n and 5 < len(n) < 100 and ct in self.SIDEBAR_CONTROL_TYPES:
+                    sample.append(f"[{ct}] {n[:50]}")
+                if len(sample) >= 6:
                     break
             logger.warning(
                 f"No matché '{title[:60]}'. Vistos {len(all_items)} elementos. "
-                f"Ejemplos de nombres: {sample_names!r}"
+                f"Sidebar items vistos: {sample!r}"
             )
             raise ClaudeControllerError(
                 f"No encontré la sesión '{title[:60]}' en el sidebar (¿colapsada o fuera de vista?)"
             )
 
         candidates.sort(key=lambda c: c[0], reverse=True)
-        score, target, matched_name = candidates[0]
-        logger.info(f"Match score={score} sobre '{matched_name[:60]}' para título '{title[:60]}'")
+        score, target, matched_name, matched_type = candidates[0]
+        logger.info(
+            f"Match score={score} [{matched_type}] sobre '{matched_name[:60]}' "
+            f"para título '{title[:60]}'"
+        )
 
         try:
             target.click_input()
