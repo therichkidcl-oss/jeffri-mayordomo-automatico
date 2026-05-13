@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from os import stat_result
 from pathlib import Path
 
 
@@ -25,22 +26,29 @@ def _all_jsonl(projects_dir: Path) -> list[Path]:
     return [p for p in projects_dir.rglob("*.jsonl") if p.is_file()]
 
 
-def detect_active_session(projects_dir: Path) -> Path | None:
-    files = _all_jsonl(projects_dir)
-    if not files:
+def _stat_safely(path: Path) -> stat_result | None:
+    try:
+        return path.stat()
+    except OSError:
         return None
-    return max(files, key=lambda p: p.stat().st_mtime)
+
+
+def detect_active_session(projects_dir: Path) -> Path | None:
+    pairs = [(p, st) for p in _all_jsonl(projects_dir) if (st := _stat_safely(p)) is not None]
+    if not pairs:
+        return None
+    return max(pairs, key=lambda pair: pair[1].st_mtime)[0]
 
 
 def list_recent_sessions(projects_dir: Path, limit: int = 10) -> list[SessionInfo]:
-    files = _all_jsonl(projects_dir)
-    sorted_files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    pairs = [(p, st) for p in _all_jsonl(projects_dir) if (st := _stat_safely(p)) is not None]
+    pairs.sort(key=lambda pair: pair[1].st_mtime, reverse=True)
     return [
         SessionInfo(
             path=p,
             folder_name=p.parent.name,
-            last_modified=datetime.fromtimestamp(p.stat().st_mtime),
+            last_modified=datetime.fromtimestamp(st.st_mtime),
             session_uuid=p.stem,
         )
-        for p in sorted_files
+        for p, st in pairs[:limit]
     ]

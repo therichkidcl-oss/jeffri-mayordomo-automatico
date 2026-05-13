@@ -45,3 +45,44 @@ def test_session_info_decoded_folder_name(tmp_path):
 
     sessions = list_recent_sessions(tmp_path, limit=1)
     assert sessions[0].decoded_path == "C:\\Users\\Reimo\\Desktop\\pyton pantalla"
+
+
+def test_detect_active_session_skips_deleted_files(tmp_path, monkeypatch):
+    proj = tmp_path / "C--Users-Reimo-Desktop-A"
+    proj.mkdir()
+    f1 = proj / "alive.jsonl"
+    f1.write_text('{}\n')
+    ghost = proj / "deleted.jsonl"
+    ghost.write_text('{}\n')
+
+    real_stat = Path.stat
+    def flaky_stat(self, *args, **kwargs):
+        if self.name == "deleted.jsonl":
+            raise FileNotFoundError(2, "Pretend it was deleted between rglob and stat")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", flaky_stat)
+
+    result = detect_active_session(tmp_path)
+    assert result == f1
+
+
+def test_list_recent_sessions_skips_deleted_files(tmp_path, monkeypatch):
+    proj = tmp_path / "C--Users-Reimo-Desktop-A"
+    proj.mkdir()
+    f1 = proj / "alive.jsonl"
+    f1.write_text('{}\n')
+    ghost = proj / "deleted.jsonl"
+    ghost.write_text('{}\n')
+
+    real_stat = Path.stat
+    def flaky_stat(self, *args, **kwargs):
+        if self.name == "deleted.jsonl":
+            raise FileNotFoundError(2, "Pretend it was deleted")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", flaky_stat)
+
+    result = list_recent_sessions(tmp_path)
+    assert len(result) == 1
+    assert result[0].path == f1
