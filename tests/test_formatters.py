@@ -102,3 +102,56 @@ def test_truncate_long_text():
 def test_escape_md_v2_special_chars():
     result = escape_md_v2("hola_mundo*test")
     assert result == "hola\\_mundo\\*test"
+
+
+def test_format_tool_use_sanitizes_backticks_in_file_path():
+    event = {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "tool_use", "name": "Read", "input": {"file_path": "src/`weird`.py"}}
+            ]
+        },
+    }
+    result = format_event(event)
+    assert "`" not in result[0].split("`")[1]
+
+
+def test_format_tool_use_sanitizes_backticks_in_bash_command():
+    event = {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": "echo `date`"}}
+            ]
+        },
+    }
+    result = format_event(event)
+    fence_count = result[0].count("```")
+    assert fence_count == 2
+
+
+def test_format_assistant_content_as_string():
+    event = {
+        "type": "assistant",
+        "message": {"content": "Texto plano sin bloques"},
+    }
+    result = format_event(event)
+    assert len(result) == 1
+    assert "Texto plano sin bloques" in result[0]
+
+
+def test_format_assistant_skips_non_dict_blocks():
+    event = {
+        "type": "assistant",
+        "message": {"content": [None, "string-block", {"type": "text", "text": "ok"}]},
+    }
+    result = format_event(event)
+    assert len(result) == 1
+    assert "ok" in result[0]
+
+
+def test_format_assistant_content_none():
+    event = {"type": "assistant", "message": {"content": None}}
+    result = format_event(event)
+    assert result == []
