@@ -150,6 +150,36 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @requires_whitelist
+async def cmd_debug_ui(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        items = await state.controller.dump_sidebar_items(max_items=60)
+    except (ClaudeNotOpenError, PCLockedError) as e:
+        await update.message.reply_text(f"❌ {e}")
+        return
+    except Exception as e:
+        logger.exception("Error en /debug_ui")
+        await update.message.reply_text(f"❌ {e}")
+        return
+    if not items:
+        await update.message.reply_text("⚠️ No detecté items con nombre visible, Sir Rich.")
+        return
+    chunks = []
+    current = "🔬 *UIA dump (primeros items con nombre):*\n```"
+    for line in items:
+        snippet = line[:110]
+        if len(current) + len(snippet) + 5 > 3900:
+            chunks.append(current + "\n```")
+            current = "```"
+        current += "\n" + snippet
+    chunks.append(current + "\n```")
+    for chunk in chunks:
+        try:
+            await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            await update.message.reply_text(chunk)
+
+
+@requires_whitelist
 async def cmd_captura(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         png_bytes = await state.controller.capture()
@@ -542,6 +572,7 @@ def main():
     app.add_handler(CommandHandler("parar", cmd_parar))
     app.add_handler(CommandHandler("seguir", cmd_seguir))
     app.add_handler(CommandHandler("captura", cmd_captura))
+    app.add_handler(CommandHandler("debug_ui", cmd_debug_ui))
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))

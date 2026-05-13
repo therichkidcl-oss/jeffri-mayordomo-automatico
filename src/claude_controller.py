@@ -177,40 +177,92 @@ class ClaudeController:
         time.sleep(0.4)
 
         title_lower = title.lower().strip()
-        target = None
+        title_words = {w for w in title_lower.split() if len(w) > 2}
 
         try:
-            exact = window.descendants(title=title)
-            if exact:
-                target = exact[0]
+            all_items = window.descendants()
         except Exception as e:
-            logger.debug(f"Match exacto falló: {e!r}")
+            raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
 
-        if target is None:
+        candidates: list[tuple[int, object, str]] = []
+        for item in all_items:
             try:
-                all_items = window.descendants()
-            except Exception as e:
-                raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
-            for item in all_items:
+                name = (item.element_info.name or "").strip()
+            except Exception:
+                continue
+            if not name or len(name) < 5:
+                continue
+            name_lower = name.lower()
+
+            score = 0
+            if name_lower == title_lower:
+                score = 1000
+            elif title_lower in name_lower:
+                score = 900 - abs(len(name_lower) - len(title_lower))
+            elif name_lower in title_lower:
+                score = 800 - abs(len(name_lower) - len(title_lower))
+            elif title_words:
+                name_words = {w for w in name_lower.split() if len(w) > 2}
+                overlap = title_words & name_words
+                if overlap:
+                    ratio = len(overlap) / len(title_words)
+                    if ratio >= 0.5:
+                        score = int(500 * ratio)
+
+            if score > 0:
+                candidates.append((score, item, name))
+
+        if not candidates:
+            sample_names = []
+            for item in all_items[:200]:
                 try:
-                    name = (item.element_info.name or "").strip()
-                    if not name:
-                        continue
-                    if name.lower() == title_lower or title_lower in name.lower():
-                        target = item
-                        break
+                    n = (item.element_info.name or "").strip()
                 except Exception:
                     continue
+                if n and 5 < len(n) < 100:
+                    sample_names.append(n)
+                if len(sample_names) >= 5:
+                    break
+            logger.warning(
+                f"No matché '{title[:60]}'. Vistos {len(all_items)} elementos. "
+                f"Ejemplos de nombres: {sample_names!r}"
+            )
+            raise ClaudeControllerError(
+                f"No encontré la sesión '{title[:60]}' en el sidebar (¿colapsada o fuera de vista?)"
+            )
 
-        if target is None:
-            raise ClaudeControllerError(f"No encontré la sesión '{title[:60]}' en el sidebar")
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        score, target, matched_name = candidates[0]
+        logger.info(f"Match score={score} sobre '{matched_name[:60]}' para título '{title[:60]}'")
 
         try:
             target.click_input()
         except Exception as e:
-            raise ClaudeControllerError(f"No pude hacer click en '{title[:40]}': {e}")
+            raise ClaudeControllerError(f"No pude hacer click en '{matched_name[:40]}': {e}")
         time.sleep(0.6)
         logger.info(f"Cambié a sesión: {title[:60]}")
+
+    async def dump_sidebar_items(self, max_items: int = 80) -> list[str]:
+        return await asyncio.to_thread(self._dump_sidebar_items_sync, max_items)
+
+    def _dump_sidebar_items_sync(self, max_items: int) -> list[str]:
+        window = self.find_window()
+        try:
+            all_items = window.descendants()
+        except Exception as e:
+            raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
+        out = []
+        for item in all_items:
+            try:
+                name = (item.element_info.name or "").strip()
+                ctype = item.element_info.control_type
+            except Exception:
+                continue
+            if name and 5 < len(name) < 120:
+                out.append(f"[{ctype}] {name}")
+                if len(out) >= max_items:
+                    break
+        return out
 
 
 def _copy_image_to_clipboard(image_bytes: bytes) -> None:
