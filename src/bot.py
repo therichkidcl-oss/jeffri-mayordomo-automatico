@@ -25,6 +25,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext").setLevel(logging.WARNING)
+logging.getLogger("watchdog").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +36,7 @@ class BotState:
         self.paused: bool = False
         self.pending_confirmations: dict[str, str] = {}
         self.controller = ClaudeController()
+        self.send_lock = asyncio.Lock()
 
 
 state = BotState()
@@ -121,7 +125,8 @@ async def on_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _send_to_claude(update: Update, text: str):
     try:
-        await state.controller.send(text)
+        async with state.send_lock:
+            await state.controller.send(text)
         await update.message.reply_text("✉️ Enviado a Claude. Esperando respuesta...")
     except ClaudeNotOpenError as e:
         await update.message.reply_text(f"❌ {e}")
@@ -150,7 +155,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
         try:
-            await state.controller.send(text)
+            async with state.send_lock:
+                await state.controller.send(text)
         except Exception as e:
             await query.message.reply_text(f"❌ {e}")
     else:
@@ -205,7 +211,7 @@ async def post_init(app: Application):
     active = detect_active_session(CLAUDE_PROJECTS_DIR)
     if active:
         watcher.set_active_file(active)
-    asyncio.create_task(_watch_active_session(app, watcher))
+    app.bot_data["session_switch_task"] = asyncio.create_task(_watch_active_session(app, watcher))
     app.bot_data["watcher"] = watcher
 
 
