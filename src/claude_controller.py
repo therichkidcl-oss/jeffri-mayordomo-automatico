@@ -101,6 +101,9 @@ class ClaudeController:
     async def capture(self) -> bytes:
         return await asyncio.to_thread(self._capture_sync)
 
+    async def switch_session(self, title: str) -> None:
+        await asyncio.to_thread(self._switch_session_sync, title)
+
     def _capture_sync(self) -> bytes:
         window = self.find_window()
         try:
@@ -164,6 +167,50 @@ class ClaudeController:
         self._focus_window()
         send_keys("{ESC}")
         logger.info("Enviado ESC a Claude (interrumpir)")
+
+    def _switch_session_sync(self, title: str) -> None:
+        window = self.find_window()
+        try:
+            window.set_focus()
+        except Exception as e:
+            raise ClaudeControllerError(f"No puedo enfocar la ventana: {e}")
+        time.sleep(0.4)
+
+        title_lower = title.lower().strip()
+        target = None
+
+        try:
+            exact = window.descendants(title=title)
+            if exact:
+                target = exact[0]
+        except Exception as e:
+            logger.debug(f"Match exacto falló: {e!r}")
+
+        if target is None:
+            try:
+                all_items = window.descendants()
+            except Exception as e:
+                raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
+            for item in all_items:
+                try:
+                    name = (item.element_info.name or "").strip()
+                    if not name:
+                        continue
+                    if name.lower() == title_lower or title_lower in name.lower():
+                        target = item
+                        break
+                except Exception:
+                    continue
+
+        if target is None:
+            raise ClaudeControllerError(f"No encontré la sesión '{title[:60]}' en el sidebar")
+
+        try:
+            target.click_input()
+        except Exception as e:
+            raise ClaudeControllerError(f"No pude hacer click en '{title[:40]}': {e}")
+        time.sleep(0.6)
+        logger.info(f"Cambié a sesión: {title[:60]}")
 
 
 def _copy_image_to_clipboard(image_bytes: bytes) -> None:

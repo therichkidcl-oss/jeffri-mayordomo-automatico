@@ -42,6 +42,7 @@ class BotState:
         self.paused: bool = False
         self.pending_destructive: dict[str, str] = {}
         self.pending_enhanced: dict[str, dict[str, str]] = {}
+        self.pending_switch: dict[str, str] = {}
         self.controller = ClaudeController()
         self.send_lock = asyncio.Lock()
         self.groq: GroqClient | None = GroqClient(GROQ_API_KEYS) if GROQ_API_KEYS else None
@@ -58,9 +59,9 @@ state = BotState()
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active = detect_active_session(CLAUDE_PROJECTS_DIR)
     if active:
-        msg = f"👋 Hola Reimo. Sesión activa: `{active.parent.name}`"
+        msg = f"👋 Hola Sir Rich. Sesión activa: `{active.parent.name}`"
     else:
-        msg = "👋 Hola Reimo. No detecté ninguna sesión activa. Abre Claude Desktop."
+        msg = "👋 Hola Sir Rich. No detecté ninguna sesión activa. Abre Claude Desktop."
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
 
@@ -81,24 +82,35 @@ async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_sesiones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sessions = list_recent_sessions(CLAUDE_PROJECTS_DIR, limit=10)
     if not sessions:
-        await update.message.reply_text("No hay sesiones recientes.")
+        await update.message.reply_text("No hay sesiones recientes, Sir Rich.")
         return
-    lines = ["📋 *Sesiones recientes:*"]
+
+    buttons = []
+    state.pending_switch.clear()
     for s in sessions:
-        lines.append(f"• `{s.folder_name}` ({s.last_modified:%H:%M:%S})")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        title = s.title or s.folder_name
+        token = uuid.uuid4().hex[:8]
+        state.pending_switch[token] = title
+        label = f"📁 {title[:55]}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"switch:go:{token}")])
+
+    await update.message.reply_text(
+        "📋 *Sesiones recientes, Sir Rich:*\nToque una para cambiar.",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 @requires_whitelist
 async def cmd_parar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = True
-    await update.message.reply_text("⏸️ Reenvío pausado. /seguir para reanudar.")
+    await update.message.reply_text("⏸️ Reenvío pausado, Sir Rich. /seguir para reanudar.")
 
 
 @requires_whitelist
 async def cmd_seguir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = False
-    await update.message.reply_text("▶️ Reenvío reanudado.")
+    await update.message.reply_text("▶️ Reenvío reanudado, Sir Rich.")
 
 
 @requires_whitelist
@@ -106,12 +118,12 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         async with state.send_lock:
             await state.controller.interrupt()
-        await update.message.reply_text("⏹ ESC enviado a Claude (interrumpido)")
+        await update.message.reply_text("⏹ ESC enviado, Sir Rich. Claude interrumpido.")
     except (ClaudeNotOpenError, PCLockedError) as e:
         await update.message.reply_text(f"❌ {e}")
     except Exception as e:
         logger.exception("Error en /stop")
-        await update.message.reply_text(f"❌ Error inesperado: {e}")
+        await update.message.reply_text(f"❌ Error inesperado, Sir Rich: {e}")
 
 
 @requires_whitelist
@@ -123,19 +135,19 @@ async def cmd_captura(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     except Exception as e:
         logger.exception("Error capturando pantalla")
-        await update.message.reply_text(f"❌ Error inesperado: {e}")
+        await update.message.reply_text(f"❌ Error inesperado, Sir Rich: {e}")
         return
-    await update.message.reply_photo(photo=png_bytes, caption="📸 Ventana de Claude")
+    await update.message.reply_photo(photo=png_bytes, caption="📸 Ventana de Claude, Sir Rich")
 
 
 @requires_whitelist
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "🤖 *TelegramClaudeBridge*\n\n"
+        "🤖 *TelegramClaudeBridge — a la orden, Sir Rich*\n\n"
         "*Comandos:*\n"
         "/start - bienvenida + sesión activa\n"
         "/estado - estado del bot\n"
-        "/sesiones - lista sesiones recientes\n"
+        "/sesiones - lista sesiones + botones para cambiar\n"
         "/captura - screenshot de la ventana de Claude\n"
         "/stop - interrumpe a Claude (envía ESC)\n"
         "/parar - pausa el reenvío hacia Telegram\n"
@@ -143,7 +155,7 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/ayuda - este mensaje\n\n"
         "*Entradas:*\n"
         "• Texto → mejorado por Groq → confirmas → Claude\n"
-        "• Voz/audio → transcrito por Groq → mejorado → confirmas → Claude\n"
+        "• Voz/audio → transcrito por Whisper → mejorado → confirmas → Claude\n"
         "• Foto → pegada en Claude (con caption si lo pones)\n"
         "• Texto destructivo → confirmación Sí/No"
     )
@@ -179,8 +191,8 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
         token = uuid.uuid4().hex[:8]
         state.pending_destructive[token] = text
         await update.message.reply_text(
-            f"⚠️ Detecté palabras destructivas (deploy/borrar/etc).\n\n"
-            f"Mensaje: _{text[:300]}_\n\n¿Confirmas?",
+            f"⚠️ Detecté palabras destructivas (deploy/borrar/etc), Sir Rich.\n\n"
+            f"Mensaje: _{text[:300]}_\n\n¿Confirma?",
             reply_markup=_destructive_keyboard(token),
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -211,7 +223,7 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
     state.pending_enhanced[token] = {"original": text, "enhanced": enhanced}
     label = "📝" if source == "texto" else ("🎙" if source == "voz" else "🖼")
     await update.message.reply_text(
-        f"{label} *Original*:\n_{text[:600]}_\n\n"
+        f"{label} *Original, Sir Rich*:\n_{text[:600]}_\n\n"
         f"✨ *Mejorado por Groq*:\n_{enhanced[:600]}_",
         reply_markup=_enhanced_keyboard(token),
         parse_mode=ParseMode.MARKDOWN,
@@ -228,14 +240,14 @@ async def _send_to_claude(update_or_query, text: str):
         async with state.send_lock:
             await state.controller.send(text)
         if reply:
-            await reply("✉️ Enviado a Claude.")
+            await reply("✉️ Enviado, Sir Rich.")
     except (ClaudeNotOpenError, PCLockedError) as e:
         if reply:
             await reply(f"❌ {e}")
     except Exception as e:
         logger.exception("Error enviando a Claude")
         if reply:
-            await reply(f"❌ Error inesperado: {e}")
+            await reply(f"❌ Error inesperado, Sir Rich: {e}")
 
 
 @requires_whitelist
@@ -251,44 +263,69 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_destructive_callback(query, decision, token)
     elif family == "enh":
         await _handle_enhanced_callback(query, decision, token)
+    elif family == "switch":
+        await _handle_switch_callback(query, decision, token)
 
 
 async def _handle_destructive_callback(query, decision: str, token: str):
     text = state.pending_destructive.pop(token, None)
     if not text:
-        await query.edit_message_text("⚠️ Confirmación expirada.")
+        await query.edit_message_text("⚠️ Confirmación expirada, Sir Rich.")
         return
     if decision == "yes":
         await query.edit_message_text(
-            f"✅ Confirmado, enviando...\n_{text[:300]}_",
+            f"✅ Confirmado, Sir Rich. Enviando...\n_{text[:300]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
         await _do_send(query, text)
     else:
-        await query.edit_message_text("❌ Cancelado.")
+        await query.edit_message_text("❌ Cancelado, Sir Rich.")
 
 
 async def _handle_enhanced_callback(query, decision: str, token: str):
     payload = state.pending_enhanced.pop(token, None)
     if not payload:
-        await query.edit_message_text("⚠️ Confirmación expirada.")
+        await query.edit_message_text("⚠️ Confirmación expirada, Sir Rich.")
         return
     if decision == "send":
         text = payload["enhanced"]
         await query.edit_message_text(
-            f"✅ Enviando mejorado...\n_{text[:300]}_",
+            f"✅ Enviando versión mejorada, Sir Rich...\n_{text[:300]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
         await _do_send(query, text)
     elif decision == "orig":
         text = payload["original"]
         await query.edit_message_text(
-            f"📤 Enviando original...\n_{text[:300]}_",
+            f"📤 Enviando original, Sir Rich...\n_{text[:300]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
         await _do_send(query, text)
     else:
-        await query.edit_message_text("❌ Cancelado.")
+        await query.edit_message_text("❌ Cancelado, Sir Rich.")
+
+
+async def _handle_switch_callback(query, decision: str, token: str):
+    title = state.pending_switch.pop(token, None)
+    if not title:
+        await query.edit_message_text("⚠️ Esa lista expiró, Sir Rich. Pida /sesiones de nuevo.")
+        return
+    await query.edit_message_text(
+        f"🔁 Cambiando a sesión, Sir Rich:\n_{title[:200]}_",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    try:
+        async with state.send_lock:
+            await state.controller.switch_session(title)
+        await query.message.reply_text(
+            f"✅ Cambiada, Sir Rich. Ahora seguimos en:\n_{title[:200]}_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except (ClaudeNotOpenError, PCLockedError) as e:
+        await query.message.reply_text(f"❌ {e}")
+    except Exception as e:
+        logger.exception("Error cambiando sesión")
+        await query.message.reply_text(f"❌ {e}")
 
 
 async def _do_send(query, text: str):
@@ -324,7 +361,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with state.send_lock:
             await state.controller.send_image(image_bytes, caption=caption)
         await update.message.reply_text(
-            f"🖼 Imagen enviada a Claude" + (f" con caption: _{caption[:120]}_" if caption else ""),
+            f"🖼 Imagen enviada a Claude, Sir Rich" + (f" con caption: _{caption[:120]}_" if caption else ""),
             parse_mode=ParseMode.MARKDOWN,
         )
     except (ClaudeNotOpenError, PCLockedError) as e:
@@ -337,7 +374,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @requires_whitelist
 async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state.groq is None:
-        await update.message.reply_text("⚠️ Groq deshabilitado, no puedo transcribir audio.")
+        await update.message.reply_text("⚠️ Groq deshabilitado, Sir Rich. No puedo transcribir audio.")
         return
 
     media = update.message.voice or update.message.audio
@@ -354,7 +391,7 @@ async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ No pude descargar el audio: {e}")
         return
 
-    await update.message.reply_text("🎙 Transcribiendo con Whisper...")
+    await update.message.reply_text("🎙 Transcribiendo con Whisper, Sir Rich...")
     try:
         filename = "voice.ogg" if update.message.voice else (media.file_name or "audio.ogg")
         transcript = await state.groq.transcribe(audio_bytes, filename=filename)
@@ -416,7 +453,7 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
                     try:
                         await app.bot.send_message(
                             chat_id=ALLOWED_USER_ID,
-                            text=f"ℹ️ Cambié al seguimiento de sesión: `{active.parent.name}`",
+                            text=f"ℹ️ Cambié el seguimiento, Sir Rich. Ahora sigo: `{active.parent.name}`",
                             parse_mode=ParseMode.MARKDOWN,
                         )
                     except Exception as e:
@@ -451,7 +488,7 @@ def main():
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
-    app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh):"))
+    app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch):"))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice_or_audio))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))
