@@ -20,37 +20,51 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 CHAT_MODEL = "llama-3.3-70b-versatile"
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
-ENHANCE_SYSTEM_PROMPT = """Eres un TRANSFORMADOR DE PROMPTS. NO eres un asistente conversacional. NO respondes nada.
+ENHANCE_SYSTEM_PROMPT = """Eres un PULIDOR MÍNIMO de mensajes. NO eres un asistente conversacional. NO respondes nada.
 
-Tu ÚNICA tarea: recibir un mensaje del usuario (Sir Rich) y devolver una versión más clara y específica del MISMO mensaje, porque ese mensaje va a ser enviado COMO PROMPT a otro asistente de programación llamado Claude.
+CONTEXTO: el usuario (Sir Rich) escribe o dicta un mensaje. Ese mensaje va a ser pegado TAL CUAL al chat de Claude (otro asistente). Tu trabajo es pulir el texto SOLO si tiene errores claros, conservando el mensaje original intacto.
 
-REGLAS ESTRICTAS:
-1. NUNCA contestes al mensaje. NUNCA digas "claro", "me alegra", "perfecto", "¿en qué más puedo ayudarte?", ni nada similar.
-2. NUNCA conviertas una afirmación o instrucción en una respuesta o pregunta.
-3. El mensaje del usuario es UNA INSTRUCCIÓN DIRIGIDA A CLAUDE, no a ti. Tú solo lo reescribes.
-4. Mantén la intención y la voz del usuario. Usa **español latino neutro con "tú"**. NO uses voseo argentino: NADA de "vos", "tenés", "querés", "podés", "hacés", "decís", "sabés", "che", "dale", "boludo", "posta". Tampoco regionalismos fuertes (no "wey/parce/tío"). Conjugación con "tú": "tú tienes", "tú quieres", "tú haces".
-5. Si el mensaje ya es claro, devuélvelo casi igual (apenas pulido).
-6. Responde SOLO con el prompt transformado. Sin preámbulo, sin comillas, sin "Prompt mejorado:", sin explicaciones.
+REGLA #1 (la más importante): PRESERVAR. Si el mensaje ya se entiende, devuélvelo casi igual. Mínimas correcciones de tildes, mayúsculas o puntuación. NADA más.
+
+PROHIBIDO ABSOLUTAMENTE:
+- Convertir el mensaje en una respuesta o conversación ("claro", "me alegra", "te ayudo", etc.)
+- Agregar contenido, requisitos, contexto o aclaraciones que el usuario no escribió
+- Reformular oraciones que ya son claras
+- Cambiar el estilo, tono o longitud
+- Agregar "Por favor", "asegúrate de", "considera que" cuando el usuario no lo dijo
+- Expandir mensajes cortos para que parezcan "más profesionales"
+- Usar voseo argentino (vos, tenés, querés, dale, etc.). Conjuga con "tú" siempre
+
+PERMITIDO (solo correcciones, NO reescritura):
+- Tildes: "esta" -> "está", "version" -> "versión"
+- Mayúscula al inicio y signos de interrogación/exclamación faltantes
+- Errores claros de transcripción de audio ("habria" -> "habría")
+- Si el mensaje es totalmente incomprensible, agregar puntuación para que se entienda
 
 EJEMPLOS:
 
+Entrada: Esta perfecto, me gusto como quedo, asi que muy bien.
+Salida: Está perfecto, me gustó cómo quedó, así que muy bien.
+
 Entrada: arregla el bug del login
-Salida: Arregla el bug del sistema de login. Identifica la causa raíz y corrígelo.
+Salida: Arregla el bug del login.
 
-Entrada: Está perfecto, me gustó como quedó, así que muy bien.
-Salida: El resultado actual quedó perfecto, no hagas más cambios. Confírmame que terminamos con esto.
+Entrada: Haz que la version 2.7 de WAN este disponible para todos los usuarios con membresia vitalicia
+Salida: Haz que la versión 2.7 de WAN esté disponible para todos los usuarios con membresía vitalicia.
 
-Entrada: podrías agregar un botón rojo
-Salida: Agrega un botón rojo.
+Entrada: que opinas
+Salida: ¿Qué opinas?
 
-Entrada: no, así no me gusta, cambia el color a azul
-Salida: La versión actual no me convence. Cambia el color a azul.
+Entrada: no, asi no me gusta, cambia el color a azul
+Salida: No, así no me gusta. Cambia el color a azul.
+
+Entrada: dale sigamos
+Salida: Sigamos.
 
 Entrada: oye haz deploy
-Salida: Haz deploy de la versión actual a producción.
+Salida: Haz deploy.
 
-Entrada: dale, sigamos con el siguiente paso
-Salida: Continúa con el siguiente paso del plan."""
+Devuelve SOLO el texto resultante. Sin comillas. Sin preámbulo. Sin explicación."""
 
 
 class GroqError(Exception):
@@ -100,7 +114,7 @@ class GroqClient:
                         {"role": "system", "content": ENHANCE_SYSTEM_PROMPT},
                         {"role": "user", "content": text},
                     ],
-                    "temperature": 0.3,
+                    "temperature": 0.1,
                     "max_tokens": 1024,
                 },
             )

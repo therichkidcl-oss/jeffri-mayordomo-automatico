@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import uuid
 from io import BytesIO
 
@@ -44,6 +45,8 @@ class BotState:
         self.pending_enhanced: dict[str, dict[str, str]] = {}
         self.pending_switch: dict[str, str] = {}
         self.pending_project: dict[str, str] = {}
+        self.processed_tokens: dict[str, float] = {}
+        self.enhancer_enabled: bool = True
         self.controller = ClaudeController()
         self.send_lock = asyncio.Lock()
         self.groq: GroqClient | None = GroqClient(GROQ_API_KEYS) if GROQ_API_KEYS else None
@@ -51,6 +54,16 @@ class BotState:
             logger.warning("GROQ_API_KEYS vacío: enhancer y transcripción deshabilitados")
         else:
             logger.info(f"Groq habilitado con {len(GROQ_API_KEYS)} keys")
+
+    def claim_token(self, token: str) -> bool:
+        """Devuelve False si ya está procesado, True si es nuevo (y lo marca)."""
+        now = time.time()
+        if len(self.processed_tokens) > 200:
+            self.processed_tokens = {k: v for k, v in self.processed_tokens.items() if now - v < 120}
+        if token in self.processed_tokens:
+            return False
+        self.processed_tokens[token] = now
+        return True
 
 
 state = BotState()
@@ -70,7 +83,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active = detect_active_session(CLAUDE_PROJECTS_DIR)
     paused = "⏸️ pausado" if state.paused else "▶️ activo"
-    groq_state = "🤖 Groq activo" if state.groq else "🤖 Groq deshabilitado"
+    if state.groq is None:
+        groq_state = "🤖 Groq deshabilitado (sin keys)"
+    elif state.enhancer_enabled:
+        groq_state = "🤖 Enhancer ON (texto pasa por Groq)"
+    else:
+        groq_state = "🤖 Enhancer OFF (texto va directo a Claude)"
     msg = (
         f"Estado: {paused}\n"
         f"Sesión: `{active.parent.name if active else '(ninguna)'}`\n"
@@ -134,6 +152,24 @@ async def cmd_parar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_seguir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = False
     await update.message.reply_text("▶️ Reenvío reanudado, Sir Rich.")
+
+
+@requires_whitelist
+async def cmd_enhancer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = (context.args or [])
+    if args:
+        arg = args[0].lower()
+        if arg in ("on", "activar", "si", "sí"):
+            state.enhancer_enabled = True
+        elif arg in ("off", "desactivar", "no"):
+            state.enhancer_enabled = False
+        else:
+            await update.message.reply_text("Usá `/enhancer on` o `/enhancer off`, Sir Rich.")
+            return
+    else:
+        state.enhancer_enabled = not state.enhancer_enabled
+    estado = "ON ✨" if state.enhancer_enabled else "OFF (texto va directo)"
+    await update.message.reply_text(f"Enhancer: *{estado}*, Sir Rich.", parse_mode=ParseMode.MARKDOWN)
 
 
 @requires_whitelist
@@ -204,6 +240,7 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sesiones - lista plana de últimas 10 sesiones\n"
         "/captura - screenshot de la ventana de Claude\n"
         "/stop - interrumpe a Claude (envía ESC)\n"
+        "/enhancer on|off - activa o desactiva el pulidor Groq\n"
         "/parar - pausa el reenvío hacia Telegram\n"
         "/seguir - reanuda el reenvío\n"
         "/ayuda - este mensaje\n\n"
@@ -252,7 +289,7 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
         )
         return
 
-    if state.groq is None:
+    if state.groq is None or not state.enhancer_enabled:
         await _send_to_claude(update, text)
         return
 
@@ -324,6 +361,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_destructive_callback(query, decision: str, token: str):
+    if not state.claim_token(f"destr:{token}"):
+        logger.warning(f"Token destructivo duplicado ignorado: {token}")
+        return
     text = state.pending_destructive.pop(token, None)
     if not text:
         await query.edit_message_text("⚠️ Confirmación expirada, Sir Rich.")
@@ -339,6 +379,9 @@ async def _handle_destructive_callback(query, decision: str, token: str):
 
 
 async def _handle_enhanced_callback(query, decision: str, token: str):
+    if not state.claim_token(f"enh:{token}"):
+        logger.warning(f"Token enhanced duplicado ignorado: {token}")
+        return
     payload = state.pending_enhanced.pop(token, None)
     if not payload:
         await query.edit_message_text("⚠️ Confirmación expirada, Sir Rich.")
@@ -574,6 +617,7 @@ def main():
     app.add_handler(CommandHandler("captura", cmd_captura))
     app.add_handler(CommandHandler("debug_ui", cmd_debug_ui))
     app.add_handler(CommandHandler("stop", cmd_stop))
+    app.add_handler(CommandHandler("enhancer", cmd_enhancer))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
     app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch|proj):"))
