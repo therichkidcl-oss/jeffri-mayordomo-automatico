@@ -65,7 +65,7 @@ class ClaudeController:
             raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
 
         if not edits:
-            logger.warning("No hay controles Edit en la ventana")
+            logger.debug("No hay controles Edit en la ventana (Electron app)")
             raise ClaudeControllerError("No encontré ningún input en la ventana de Claude")
 
         names_to_try: list[str | None] = []
@@ -124,11 +124,14 @@ class ClaudeController:
             logger.warning(f"No puedo enfocar la ventana de Claude: {e!r}")
             raise ClaudeControllerError(f"No puedo enfocar la ventana de Claude: {e}")
 
-        time.sleep(0.3)
+        time.sleep(0.5)
 
-        input_ctrl = self._find_input(window)
-        input_ctrl.set_focus()
-        time.sleep(0.2)
+        try:
+            input_ctrl = self._find_input(window)
+            input_ctrl.set_focus()
+            time.sleep(0.2)
+        except ClaudeControllerError as e:
+            logger.debug(f"No expuse el input via UIA, usando foco de ventana: {e}")
 
         pyperclip.copy(text)
         send_keys("^v", pause=0.05)
