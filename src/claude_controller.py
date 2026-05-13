@@ -168,7 +168,20 @@ class ClaudeController:
         send_keys("{ESC}")
         logger.info("Enviado ESC a Claude (interrumpir)")
 
-    SIDEBAR_CONTROL_TYPES = {"ListItem", "TreeItem", "MenuItem", "Hyperlink", "Button"}
+    SEARCH_BUTTON_NAMES = {"search", "buscar"}
+
+    def _find_search_button(self, window):
+        try:
+            for item in window.descendants(control_type="Button"):
+                try:
+                    name = (item.element_info.name or "").strip().lower()
+                except Exception:
+                    continue
+                if name in self.SEARCH_BUTTON_NAMES:
+                    return item
+        except Exception as e:
+            logger.debug(f"Búsqueda de Search button falló: {e!r}")
+        return None
 
     def _switch_session_sync(self, title: str) -> None:
         window = self.find_window()
@@ -178,85 +191,32 @@ class ClaudeController:
             raise ClaudeControllerError(f"No puedo enfocar la ventana: {e}")
         time.sleep(0.4)
 
-        title_lower = title.lower().strip()
-        title_words = {w for w in title_lower.split() if len(w) > 2}
+        query_text = title.strip()
+        if len(query_text) > 60:
+            query_text = query_text[:60].rsplit(" ", 1)[0] or query_text[:60]
+        logger.info(f"Switch: buscando '{query_text}' (titulo orig: '{title[:80]}')")
 
-        try:
-            all_items = window.descendants()
-        except Exception as e:
-            raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
-
-        candidates: list[tuple[int, object, str, str]] = []
-        for item in all_items:
+        search_btn = self._find_search_button(window)
+        if search_btn is None:
+            logger.info("No encontré botón Search, probando atajo Ctrl+K")
+            send_keys("^k")
+        else:
             try:
-                name = (item.element_info.name or "").strip()
-                ctype = item.element_info.control_type or ""
-            except Exception:
-                continue
-            if not name or len(name) < 5:
-                continue
-            name_lower = name.lower()
-            is_sidebar_type = ctype in self.SIDEBAR_CONTROL_TYPES
+                search_btn.click_input()
+                logger.info("Click en botón Search")
+            except Exception as e:
+                logger.warning(f"Click en Search falló, fallback a Ctrl+K: {e!r}")
+                send_keys("^k")
 
-            score = 0
-            if name_lower == title_lower:
-                score = 1000
-            elif title_lower in name_lower:
-                score = 900 - abs(len(name_lower) - len(title_lower))
-            elif name_lower in title_lower:
-                score = 800 - abs(len(name_lower) - len(title_lower))
-            elif is_sidebar_type and title_words:
-                name_words = {w for w in name_lower.split() if len(w) > 2}
-                overlap = title_words & name_words
-                if overlap:
-                    ratio = len(overlap) / len(title_words)
-                    if ratio >= 0.6:
-                        score = int(400 * ratio)
+        time.sleep(0.8)
 
-            if score > 0 and not is_sidebar_type:
-                if score < 800:
-                    continue
-                score -= 150
+        pyperclip.copy(query_text)
+        send_keys("^v", pause=0.05)
+        time.sleep(1.2)
 
-            if score > 0 and is_sidebar_type:
-                score += 100
-
-            if score > 0:
-                candidates.append((score, item, name, ctype))
-
-        if not candidates:
-            sample = []
-            for item in all_items[:500]:
-                try:
-                    n = (item.element_info.name or "").strip()
-                    ct = item.element_info.control_type or ""
-                except Exception:
-                    continue
-                if n and 5 < len(n) < 100 and ct in self.SIDEBAR_CONTROL_TYPES:
-                    sample.append(f"[{ct}] {n[:50]}")
-                if len(sample) >= 6:
-                    break
-            logger.warning(
-                f"No matché '{title[:60]}'. Vistos {len(all_items)} elementos. "
-                f"Sidebar items vistos: {sample!r}"
-            )
-            raise ClaudeControllerError(
-                f"No encontré la sesión '{title[:60]}' en el sidebar (¿colapsada o fuera de vista?)"
-            )
-
-        candidates.sort(key=lambda c: c[0], reverse=True)
-        score, target, matched_name, matched_type = candidates[0]
-        logger.info(
-            f"Match score={score} [{matched_type}] sobre '{matched_name[:60]}' "
-            f"para título '{title[:60]}'"
-        )
-
-        try:
-            target.click_input()
-        except Exception as e:
-            raise ClaudeControllerError(f"No pude hacer click en '{matched_name[:40]}': {e}")
-        time.sleep(0.6)
-        logger.info(f"Cambié a sesión: {title[:60]}")
+        send_keys("{ENTER}")
+        time.sleep(0.8)
+        logger.info(f"Switch enviado para '{query_text}'")
 
     async def dump_sidebar_items(self, max_items: int = 80) -> list[str]:
         return await asyncio.to_thread(self._dump_sidebar_items_sync, max_items)
