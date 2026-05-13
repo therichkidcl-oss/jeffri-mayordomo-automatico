@@ -5,7 +5,6 @@ import mss
 import mss.tools
 import pyperclip
 from pywinauto import Desktop
-from pywinauto.findwindows import ElementNotFoundError
 from pywinauto.keyboard import send_keys
 
 logger = logging.getLogger(__name__)
@@ -59,30 +58,32 @@ class ClaudeController:
         raise ClaudeNotOpenError("Hay ventanas de Claude pero ninguna visible")
 
     def _find_input(self, window):
+        try:
+            edits = window.descendants(control_type="Edit")
+        except Exception as e:
+            logger.warning(f"No pude listar Edits en la ventana: {e!r}")
+            raise ClaudeControllerError(f"No pude inspeccionar la ventana: {e}")
+
+        if not edits:
+            logger.warning("No hay controles Edit en la ventana")
+            raise ClaudeControllerError("No encontré ningún input en la ventana de Claude")
+
         names_to_try: list[str | None] = []
         if self._resolved_input_name is not None:
             names_to_try.append(self._resolved_input_name)
         names_to_try.extend(n for n in self.INPUT_NAMES if n != self._resolved_input_name)
 
         for name in names_to_try:
-            try:
-                ctrl = window.child_window(title=name, control_type="Edit")
-                if ctrl.exists(timeout=0.5):
-                    self._resolved_input_name = name
-                    return ctrl
-            except ElementNotFoundError:
-                continue
+            for edit in edits:
+                try:
+                    if edit.element_info.name == name:
+                        self._resolved_input_name = name
+                        return edit
+                except Exception:
+                    continue
 
-        try:
-            edits = window.descendants(control_type="Edit")
-            if edits:
-                logger.debug("Usando último Edit del árbol UIA como fallback")
-                return edits[-1]
-        except Exception as e:
-            logger.debug(f"Fallback edit search failed: {e!r}")
-
-        logger.warning("No encontré el input de Claude en la ventana")
-        raise ClaudeControllerError("No encontré el input de Claude en la ventana")
+        logger.debug(f"Fallback: usando último Edit de {len(edits)} encontrados")
+        return edits[-1]
 
     async def send(self, text: str) -> None:
         await asyncio.to_thread(self._send_sync, text)
