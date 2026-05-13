@@ -19,11 +19,14 @@ class _JsonlHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         path = Path(event.src_path)
-        if path.suffix == ".jsonl":
-            asyncio.run_coroutine_threadsafe(
-                self.watcher._on_file_modified(path),
-                self.watcher.loop,
-            )
+        if path.suffix != ".jsonl":
+            return
+        if self.watcher.loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self.watcher._on_file_modified(path),
+            self.watcher.loop,
+        )
 
 
 class TranscriptWatcher:
@@ -33,11 +36,12 @@ class TranscriptWatcher:
         self._observer: Observer | None = None
         self._active_file: Path | None = None
         self._last_offset: int = 0
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self.loop: asyncio.AbstractEventLoop | None = None
 
     def start(self) -> None:
         if self._observer is not None:
             return
+        self.loop = asyncio.get_running_loop()
         self._observer = Observer()
         self._observer.schedule(_JsonlHandler(self), str(self.projects_dir), recursive=True)
         self._observer.start()
@@ -53,20 +57,29 @@ class TranscriptWatcher:
         if self._active_file == path:
             return
         self._active_file = path
-        self._last_offset = path.stat().st_size if path.exists() else 0
+        try:
+            self._last_offset = path.stat().st_size
+        except OSError:
+            self._last_offset = 0
         logger.info(f"Now watching: {path}")
 
     async def _on_file_modified(self, path: Path) -> None:
-        if path != self._active_file:
+        if self._active_file is None or path != self._active_file:
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "rb") as f:
                 f.seek(self._last_offset)
-                new_data = f.read()
-                self._last_offset = f.tell()
+                new_bytes = f.read()
 
-            for line in new_data.splitlines():
-                line = line.strip()
+            last_nl = new_bytes.rfind(b"\n")
+            if last_nl < 0:
+                return
+
+            complete = new_bytes[: last_nl + 1]
+            new_offset = self._last_offset + len(complete)
+
+            for raw_line in complete.decode("utf-8", errors="replace").splitlines():
+                line = raw_line.strip()
                 if not line:
                     continue
                 try:
@@ -75,5 +88,7 @@ class TranscriptWatcher:
                     logger.debug(f"Skipping malformed JSON line: {line[:100]}")
                     continue
                 await self.on_event(event)
+
+            self._last_offset = new_offset
         except Exception as e:
             logger.exception(f"Error processing {path}: {e}")
