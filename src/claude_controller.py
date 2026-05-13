@@ -141,12 +141,18 @@ class ClaudeController:
         if dismiss_modals:
             send_keys("{ESC}")
             time.sleep(0.2)
-        try:
-            input_ctrl = self._find_input(window)
-            input_ctrl.set_focus()
-            time.sleep(0.2)
-        except ClaudeControllerError as e:
-            logger.debug(f"No expuse el input via UIA, usando foco de ventana: {e}")
+        self._click_chat_input(window)
+
+    def _click_chat_input(self, window) -> None:
+        rect = window.rectangle()
+        sidebar_w = 320
+        chat_left = rect.left + sidebar_w
+        chat_right = rect.right
+        cx = chat_left + (chat_right - chat_left) // 2
+        cy = rect.bottom - 80
+        logger.debug(f"Click en input del chat @ ({cx}, {cy})")
+        _click_at(cx, cy)
+        time.sleep(0.3)
 
     def _send_sync(self, text: str) -> None:
         self._focus_window()

@@ -306,7 +306,7 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
         await _send_to_claude(update, text)
         return
 
-    if enhanced.strip() == text.strip():
+    if enhanced.strip() == text.strip() and source != "voz":
         await _send_to_claude(update, text)
         return
 
