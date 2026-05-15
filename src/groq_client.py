@@ -1,11 +1,11 @@
-"""Cliente Groq con rotación de API keys.
+"""Cliente Groq con rotacion de API keys.
 
 Maneja:
 - Mejora de prompts (chat completions con llama)
-- Transcripción de audio (Whisper)
+- Transcripcion de audio (Whisper)
 
 Si una key falla por rate limit (429) o auth (401), pasa a la siguiente
-automáticamente. Si todas fallan, levanta GroqAllKeysFailed.
+automaticamente. Si todas fallan, levanta GroqAllKeysFailed.
 """
 import asyncio
 import logging
@@ -20,51 +20,51 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 CHAT_MODEL = "llama-3.3-70b-versatile"
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
-ENHANCE_SYSTEM_PROMPT = """Eres un PULIDOR MÍNIMO de mensajes. NO eres un asistente conversacional. NO respondes nada.
+ENHANCE_SYSTEM_PROMPT = """Eres un PULIDOR MINIMO de mensajes. NO eres un asistente conversacional. NO respondes nada.
 
 CONTEXTO: el usuario (Sir Rich) escribe o dicta un mensaje. Ese mensaje va a ser pegado TAL CUAL al chat de Claude (otro asistente). Tu trabajo es pulir el texto SOLO si tiene errores claros, conservando el mensaje original intacto.
 
-REGLA #1 (la más importante): PRESERVAR. Si el mensaje ya se entiende, devuélvelo casi igual. Mínimas correcciones de tildes, mayúsculas o puntuación. NADA más.
+REGLA #1 (la mas importante): PRESERVAR. Si el mensaje ya se entiende, devuelvelo casi igual. Minimas correcciones de tildes, mayusculas o puntuacion. NADA mas.
 
 PROHIBIDO ABSOLUTAMENTE:
-- Convertir el mensaje en una respuesta o conversación ("claro", "me alegra", "te ayudo", etc.)
-- Agregar contenido, requisitos, contexto o aclaraciones que el usuario no escribió
+- Convertir el mensaje en una respuesta o conversacion ("claro", "me alegra", "te ayudo", etc.)
+- Agregar contenido, requisitos, contexto o aclaraciones que el usuario no escribio
 - Reformular oraciones que ya son claras
 - Cambiar el estilo, tono o longitud
-- Agregar "Por favor", "asegúrate de", "considera que" cuando el usuario no lo dijo
-- Expandir mensajes cortos para que parezcan "más profesionales"
-- Usar voseo argentino (vos, tenés, querés, dale, etc.). Conjuga con "tú" siempre
+- Agregar "Por favor", "asegurate de", "considera que" cuando el usuario no lo dijo
+- Expandir mensajes cortos para que parezcan "mas profesionales"
+- Usar voseo argentino (vos, tenes, queres, dale, etc.). Conjuga con "tu" siempre
 
 PERMITIDO (solo correcciones, NO reescritura):
-- Tildes: "esta" -> "está", "version" -> "versión"
-- Mayúscula al inicio y signos de interrogación/exclamación faltantes
-- Errores claros de transcripción de audio ("habria" -> "habría")
-- Si el mensaje es totalmente incomprensible, agregar puntuación para que se entienda
+- Tildes: "esta" -> "esta", "version" -> "version"
+- Mayuscula al inicio y signos de interrogacion/exclamacion faltantes
+- Errores claros de transcripcion de audio ("habria" -> "habria")
+- Si el mensaje es totalmente incomprensible, agregar puntuacion para que se entienda
 
 EJEMPLOS:
 
 Entrada: Esta perfecto, me gusto como quedo, asi que muy bien.
-Salida: Está perfecto, me gustó cómo quedó, así que muy bien.
+Salida: Esta perfecto, me gusto como quedo, asi que muy bien.
 
 Entrada: arregla el bug del login
 Salida: Arregla el bug del login.
 
 Entrada: Haz que la version 2.7 de WAN este disponible para todos los usuarios con membresia vitalicia
-Salida: Haz que la versión 2.7 de WAN esté disponible para todos los usuarios con membresía vitalicia.
+Salida: Haz que la version 2.7 de WAN este disponible para todos los usuarios con membresia vitalicia.
 
 Entrada: que opinas
-Salida: ¿Qué opinas?
+Salida: ¿Que opinas?
 
 Entrada: no, asi no me gusta, cambia el color a azul
-Salida: No, así no me gusta. Cambia el color a azul.
+Salida: No, asi no me gusta. Cambia el color a azul.
 
-Entrada: dale sigamos
-Salida: Sigamos.
+Entrada: sigamos con esto
+Salida: Sigamos con esto.
 
 Entrada: oye haz deploy
 Salida: Haz deploy.
 
-Devuelve SOLO el texto resultante. Sin comillas. Sin preámbulo. Sin explicación."""
+Devuelve SOLO el texto resultante. Sin comillas. Sin preambulo. Sin explicacion."""
 
 
 class GroqError(Exception):
@@ -98,10 +98,10 @@ class GroqClient:
             try:
                 return await self._call_chat(text, self._current)
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
-                logger.warning(f"Groq key falló ({type(e).__name__}): {e}; rotando")
+                logger.warning(f"Groq key fallo ({type(e).__name__}): {e}; rotando")
                 errors.append(f"{type(e).__name__}: {e}")
                 self._rotate()
-        raise GroqAllKeysFailed(f"Todas las keys fallaron. Últimos errores: {errors[-3:]}")
+        raise GroqAllKeysFailed(f"Todas las keys fallaron. Ultimos errores: {errors[-3:]}")
 
     async def _call_chat(self, text: str, api_key: str) -> str:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -132,10 +132,10 @@ class GroqClient:
             try:
                 return await self._call_whisper(audio_bytes, filename, self._current)
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
-                logger.warning(f"Groq Whisper falló ({type(e).__name__}): {e}; rotando")
+                logger.warning(f"Groq Whisper fallo ({type(e).__name__}): {e}; rotando")
                 errors.append(f"{type(e).__name__}: {e}")
                 self._rotate()
-        raise GroqAllKeysFailed(f"Todas las keys fallaron. Últimos errores: {errors[-3:]}")
+        raise GroqAllKeysFailed(f"Todas las keys fallaron. Ultimos errores: {errors[-3:]}")
 
     async def _call_whisper(self, audio_bytes: bytes, filename: str, api_key: str) -> str:
         async with httpx.AsyncClient(timeout=60.0) as client:

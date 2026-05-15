@@ -9,7 +9,7 @@ from src.security import is_destructive
     "DELETE FROM users",
     "drop table users",
     "vercel --prod",
-    "haz deploy a producción",
+    "haz deploy a produccion",
     "git push --force",
     "force-push al main",
     "TRUNCATE TABLE users",
@@ -24,9 +24,9 @@ def test_is_destructive_detects(text):
 
 @pytest.mark.parametrize("text", [
     "lee el archivo bot.py",
-    "muéstrame los logs",
-    "qué hace este código",
-    "explícame la función",
+    "muestrame los logs",
+    "que hace este codigo",
+    "explicame la funcion",
     "agrega un test",
     "crea un nuevo endpoint",
     "drop me a message",

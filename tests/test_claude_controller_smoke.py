@@ -2,7 +2,7 @@
 Smoke test manual. NO se corre con pytest CI (no tiene funciones test_*).
 
 Para probar:
-1. Abre Claude Code Desktop y haz click en una sesión.
+1. Abre Claude Code Desktop y haz click en una sesion.
 2. Ejecuta:
    - Con mensaje custom: python -m tests.test_claude_controller_smoke "tu mensaje"
    - Interactivo: python -m tests.test_claude_controller_smoke

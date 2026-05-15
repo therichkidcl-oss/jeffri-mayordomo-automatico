@@ -8,9 +8,9 @@ from src.config import ALLOWED_USER_ID
 
 logger = logging.getLogger(__name__)
 
-# Patrones que disparan confirmación Sí/No antes de enviar el mensaje a Claude.
-# Por diseño esta lista prefiere false-positives (botón de más) sobre false-negatives
-# (operación destructiva sin confirmar). El plan dice que es expandible (design.md:226).
+# Patrones que disparan confirmacion Si/No antes de enviar el mensaje a Claude.
+# Por diseño esta lista prefiere false-positives (boton de mas) sobre false-negatives
+# (operacion destructiva sin confirmar). El plan dice que es expandible (design.md:226).
 DESTRUCTIVE_PATTERNS = [
     r"\bborra\b",
     r"\belimina\b",
@@ -21,7 +21,7 @@ DESTRUCTIVE_PATTERNS = [
     r"\bvercel\s+--prod\b",
     r"\bgit\s+push\s+(--force|-f)\b",
     r"\bforce[-\s]push\b",
-    r"\bproducci[oó]n\b",
+    r"\bproducci[oo]n\b",
     r"\bprod\b",
     r"\btruncate\s+(table\s+)?\w+\b",
     r"\bgit\s+reset\s+--hard\b",

@@ -21,11 +21,11 @@ class ClaudeControllerError(Exception):
 
 
 class ClaudeNotOpenError(ClaudeControllerError):
-    """La app Claude Desktop no está abierta."""
+    """La app Claude Desktop no esta abierta."""
 
 
 class PCLockedError(ClaudeControllerError):
-    """La PC está bloqueada o la UI no es accesible."""
+    """La PC esta bloqueada o la UI no es accesible."""
 
 
 class ClaudeController:
@@ -49,8 +49,8 @@ class ClaudeController:
             raise PCLockedError(f"No puedo acceder a la UI (¿PC bloqueada?): {e}")
 
         if not windows:
-            logger.warning("No encontré ninguna ventana de Claude Desktop")
-            raise ClaudeNotOpenError("No encontré ninguna ventana de Claude Desktop")
+            logger.warning("No encontre ninguna ventana de Claude Desktop")
+            raise ClaudeNotOpenError("No encontre ninguna ventana de Claude Desktop")
 
         for w in windows:
             try:
@@ -60,7 +60,7 @@ class ClaudeController:
                 logger.debug(f"Ventana descartada por error en is_visible(): {e!r}")
                 continue
 
-        logger.warning(f"Encontré {len(windows)} ventana(s) de Claude pero ninguna visible")
+        logger.warning(f"Encontre {len(windows)} ventana(s) de Claude pero ninguna visible")
         raise ClaudeNotOpenError("Hay ventanas de Claude pero ninguna visible")
 
     def _find_input(self, window):
@@ -72,7 +72,7 @@ class ClaudeController:
 
         if not edits:
             logger.debug("No hay controles Edit en la ventana (Electron app)")
-            raise ClaudeControllerError("No encontré ningún input en la ventana de Claude")
+            raise ClaudeControllerError("No encontre ningun input en la ventana de Claude")
 
         names_to_try: list[str | None] = []
         if self._resolved_input_name is not None:
@@ -88,7 +88,7 @@ class ClaudeController:
                 except Exception:
                     continue
 
-        logger.debug(f"Fallback: usando último Edit de {len(edits)} encontrados")
+        logger.debug(f"Fallback: usando ultimo Edit de {len(edits)} encontrados")
         return edits[-1]
 
     async def send(self, text: str) -> None:
@@ -112,7 +112,7 @@ class ClaudeController:
             window.set_focus()
             time.sleep(0.2)
         except Exception as e:
-            logger.debug(f"set_focus en capture falló (continúo igual): {e!r}")
+            logger.debug(f"set_focus en capture fallo (continuo igual): {e!r}")
 
         rect = window.rectangle()
         bbox = {
@@ -122,7 +122,7 @@ class ClaudeController:
             "height": rect.bottom - rect.top,
         }
         if bbox["width"] <= 0 or bbox["height"] <= 0:
-            raise ClaudeControllerError(f"Dimensiones de ventana inválidas: {bbox}")
+            raise ClaudeControllerError(f"Dimensiones de ventana invalidas: {bbox}")
 
         with mss.mss() as sct:
             sct_img = sct.grab(bbox)
@@ -191,7 +191,7 @@ class ClaudeController:
                 if name in self.SEARCH_BUTTON_NAMES:
                     return item
         except Exception as e:
-            logger.debug(f"Búsqueda de Search button falló: {e!r}")
+            logger.debug(f"Busqueda de Search button fallo: {e!r}")
         return None
 
     def _switch_session_sync(self, title: str) -> None:
@@ -224,7 +224,7 @@ class ClaudeController:
         coords = _ocr_find_text(png_bytes, target, sidebar_bbox["left"], sidebar_bbox["top"])
         if coords is None:
             raise ClaudeControllerError(
-                f"No encontré '{title[:40]}' en el sidebar via OCR. ¿Está visible?"
+                f"No encontre '{title[:40]}' en el sidebar via OCR. ¿Esta visible?"
             )
 
         cx, cy = coords
@@ -304,18 +304,18 @@ def _ocr_find_text(png_bytes: bytes, query: str, offset_x: int, offset_y: int) -
     try:
         import winocr
     except ImportError:
-        logger.error("winocr no está instalado")
+        logger.error("winocr no esta instalado")
         return None
 
     img = Image.open(BytesIO(png_bytes))
     try:
         result = asyncio.run(winocr.recognize_pil(img, "es-ES"))
     except Exception as e:
-        logger.warning(f"OCR falló con es-ES: {e!r}, reintentando sin lang")
+        logger.warning(f"OCR fallo con es-ES: {e!r}, reintentando sin lang")
         try:
             result = asyncio.run(winocr.recognize_pil(img))
         except Exception as e2:
-            logger.error(f"OCR falló completamente: {e2!r}")
+            logger.error(f"OCR fallo completamente: {e2!r}")
             return None
 
     try:
@@ -359,7 +359,7 @@ def _ocr_find_text(png_bytes: bytes, query: str, offset_x: int, offset_y: int) -
                 sample.append((line.text or "")[:50])
             except Exception:
                 continue
-        logger.warning(f"OCR no encontró '{query}'. Textos leídos: {sample}")
+        logger.warning(f"OCR no encontro '{query}'. Textos leidos: {sample}")
         return None
 
     candidates.sort(key=lambda c: c[0], reverse=True)
