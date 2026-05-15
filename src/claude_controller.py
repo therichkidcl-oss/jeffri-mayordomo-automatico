@@ -97,6 +97,9 @@ class ClaudeController:
     async def send_image(self, image_bytes: bytes, caption: str | None = None) -> None:
         await asyncio.to_thread(self._send_image_sync, image_bytes, caption)
 
+    async def send_images(self, images: list[bytes], caption: str | None = None) -> None:
+        await asyncio.to_thread(self._send_images_sync, images, caption)
+
     async def interrupt(self) -> None:
         await asyncio.to_thread(self._interrupt_sync)
 
@@ -163,16 +166,22 @@ class ClaudeController:
         logger.info(f"Mensaje enviado a Claude ({len(text)} chars): {text[:80]!r}...")
 
     def _send_image_sync(self, image_bytes: bytes, caption: str | None) -> None:
+        self._send_images_sync([image_bytes], caption)
+
+    def _send_images_sync(self, images: list[bytes], caption: str | None) -> None:
+        if not images:
+            return
         self._focus_window()
-        _copy_image_to_clipboard(image_bytes)
-        send_keys("^v", pause=0.05)
-        time.sleep(0.6)
+        for i, img_bytes in enumerate(images):
+            _copy_image_to_clipboard(img_bytes)
+            send_keys("^v", pause=0.05)
+            time.sleep(0.7)
         if caption:
             pyperclip.copy(caption)
             send_keys("^v", pause=0.05)
             time.sleep(0.3)
         send_keys("{ENTER}")
-        logger.info(f"Imagen enviada a Claude ({len(image_bytes)} bytes)" + (f" + caption: {caption[:60]!r}" if caption else ""))
+        logger.info(f"{len(images)} imagen(es) enviadas a Claude" + (f" + caption: {caption[:60]!r}" if caption else ""))
 
     def _interrupt_sync(self) -> None:
         self._focus_window()

@@ -45,8 +45,10 @@ class BotState:
         self.pending_enhanced: dict[str, dict[str, str]] = {}
         self.pending_switch: dict[str, str] = {}
         self.pending_project: dict[str, str] = {}
+        self.pending_image: dict[str, dict] = {}
         self.processed_tokens: dict[str, float] = {}
         self.enhancer_enabled: bool = True
+        self.album_buffers: dict[str, dict] = {}
         self.controller = ClaudeController()
         self.send_lock = asyncio.Lock()
         self.groq: GroqClient | None = GroqClient(GROQ_API_KEYS) if GROQ_API_KEYS else None
@@ -294,7 +296,7 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
         return
 
     try:
-        enhanced = await state.groq.enhance_prompt(text)
+        enhanced = await state.groq.enhance_prompt(text, source=source)
     except GroqAllKeysFailed as e:
         logger.warning(f"Groq enhance fallo, mandando original: {e}")
         await update.message.reply_text("⚠️ Groq no respondio, mando original sin mejorar.")
@@ -358,6 +360,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_switch_callback(query, decision, token)
     elif family == "proj":
         await _handle_project_open(query, decision, token)
+    elif family == "img":
+        await _handle_image_callback(query, decision, token)
 
 
 async def _handle_destructive_callback(query, decision: str, token: str):
@@ -402,6 +406,36 @@ async def _handle_enhanced_callback(query, decision: str, token: str):
         await _do_send(query, text)
     else:
         await query.edit_message_text("❌ Cancelado, Sir Rich.")
+
+
+async def _handle_image_callback(query, decision: str, token: str):
+    if not state.claim_token(f"img:{token}"):
+        logger.warning(f"Token img duplicado ignorado: {token}")
+        return
+    payload = state.pending_image.pop(token, None)
+    if not payload:
+        await query.edit_message_text("⚠️ Esa imagen expiro, Sir Rich.")
+        return
+    images = payload["images"]
+    if decision == "cancel":
+        await query.edit_message_text("❌ Cancelado, Sir Rich. No envie las imagenes.")
+        return
+    caption = payload["enhanced"] if decision == "send" else payload["original"]
+    label = "version mejorada" if decision == "send" else "caption original"
+    n = len(images)
+    plural = "imagenes" if n > 1 else "imagen"
+    await query.edit_message_text(
+        f"✅ Enviando {n} {plural} con {label}, Sir Rich...\n_{caption[:300]}_",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    try:
+        async with state.send_lock:
+            await state.controller.send_images(images, caption=caption)
+    except (ClaudeNotOpenError, PCLockedError) as e:
+        await query.message.reply_text(f"❌ {e}")
+    except Exception as e:
+        logger.exception("Error enviando imagenes")
+        await query.message.reply_text(f"❌ {e}")
 
 
 async def _handle_project_open(query, decision: str, token: str):
@@ -470,6 +504,9 @@ async def _do_send(query, text: str):
         await query.message.reply_text(f"❌ {e}")
 
 
+ALBUM_WAIT_SECONDS = 1.8
+
+
 @requires_whitelist
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photos = update.message.photo
@@ -477,6 +514,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     photo = photos[-1]
     caption = (update.message.caption or "").strip() or None
+    media_group_id = update.message.media_group_id
 
     try:
         tg_file = await photo.get_file()
@@ -488,17 +526,89 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ No pude descargar la foto: {e}")
         return
 
+    if media_group_id:
+        await _accumulate_album_photo(update, media_group_id, image_bytes, caption)
+        return
+
+    await _present_image(update, [image_bytes], caption)
+
+
+async def _accumulate_album_photo(update: Update, group_id: str, image_bytes: bytes, caption: str | None):
+    existing = state.album_buffers.get(group_id)
+    if existing is None:
+        state.album_buffers[group_id] = {
+            "images": [image_bytes],
+            "caption": caption,
+            "update": update,
+            "task": None,
+        }
+        task = asyncio.create_task(_album_flush_after_delay(group_id))
+        state.album_buffers[group_id]["task"] = task
+    else:
+        existing["images"].append(image_bytes)
+        if caption and not existing["caption"]:
+            existing["caption"] = caption
+
+
+async def _album_flush_after_delay(group_id: str):
+    await asyncio.sleep(ALBUM_WAIT_SECONDS)
+    payload = state.album_buffers.pop(group_id, None)
+    if payload is None:
+        return
+    await _present_image(payload["update"], payload["images"], payload["caption"])
+
+
+async def _present_image(update: Update, images: list[bytes], caption: str | None):
+    if not caption or state.groq is None or not state.enhancer_enabled:
+        await _send_images_to_claude(update, images, caption)
+        return
+
+    try:
+        enhanced = await state.groq.enhance_prompt(caption, source="texto")
+    except GroqAllKeysFailed:
+        await _send_images_to_claude(update, images, caption)
+        return
+    except GroqError:
+        logger.exception("Groq error en caption de imagen")
+        await _send_images_to_claude(update, images, caption)
+        return
+
+    if enhanced.strip() == caption.strip():
+        await _send_images_to_claude(update, images, caption)
+        return
+
+    token = uuid.uuid4().hex[:8]
+    state.pending_image[token] = {"images": images, "original": caption, "enhanced": enhanced}
+    n = len(images)
+    plural = "imagenes" if n > 1 else "imagen"
+    await update.message.reply_text(
+        f"🖼 {n} {plural} con caption, Sir Rich:\n\n"
+        f"📝 *Original*:\n_{caption[:600]}_\n\n"
+        f"✨ *Mejorado por Groq*:\n_{enhanced[:600]}_",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Mandar mejorado", callback_data=f"img:send:{token}")],
+            [InlineKeyboardButton("📤 Mandar original", callback_data=f"img:orig:{token}")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data=f"img:cancel:{token}")],
+        ]),
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def _send_images_to_claude(update: Update, images: list[bytes], caption: str | None):
+    n = len(images)
     try:
         async with state.send_lock:
-            await state.controller.send_image(image_bytes, caption=caption)
+            await state.controller.send_images(images, caption=caption)
+        plural = "imagenes" if n > 1 else "imagen"
+        cap_part = f" con caption: _{caption[:120]}_" if caption else ""
         await update.message.reply_text(
-            f"🖼 Imagen enviada a Claude, Sir Rich" + (f" con caption: _{caption[:120]}_" if caption else ""),
+            f"🖼 {n} {plural} enviada(s) a Claude, Sir Rich{cap_part}",
             parse_mode=ParseMode.MARKDOWN,
         )
     except (ClaudeNotOpenError, PCLockedError) as e:
         await update.message.reply_text(f"❌ {e}")
     except Exception as e:
-        logger.exception("Error enviando imagen a Claude")
+        logger.exception("Error enviando imagen(es) a Claude")
         await update.message.reply_text(f"❌ {e}")
 
 
@@ -622,7 +732,7 @@ def main():
     app.add_handler(CommandHandler("enhancer", cmd_enhancer))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
-    app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch|proj):"))
+    app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch|proj|img):"))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice_or_audio))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))

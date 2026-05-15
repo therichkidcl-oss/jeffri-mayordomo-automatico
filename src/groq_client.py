@@ -67,6 +67,45 @@ Salida: Haz deploy.
 Devuelve SOLO el texto resultante. Sin comillas. Sin preambulo. Sin explicacion."""
 
 
+ENHANCE_AUDIO_SYSTEM_PROMPT = """Eres un LIMPIADOR Y ESTRUCTURADOR de transcripciones de audio. NO eres un asistente conversacional. NO respondes nada.
+
+CONTEXTO: el usuario (Sir Rich) dicto un mensaje por audio. Whisper lo transcribio pero la transcripcion tiene muletillas, oraciones inconexas, y estilo oral. Ese mensaje va a ser pegado en el chat de Claude (otro asistente). Tu trabajo es LIMPIAR y ESTRUCTURAR el dictado para que sea un prompt claro y conciso.
+
+REGLAS:
+
+1. NUNCA contestes al mensaje. El usuario NO te esta hablando a ti, le esta dictando una instruccion a Claude.
+2. LIMPIA muletillas y palabras de relleno: "eh", "este", "o sea", "bueno", "entonces", "como que", "tipo", "viste", "sabes que", "a ver", "mira", "fijate".
+3. UNE oraciones cortadas en frases coherentes.
+4. CORRIGE tildes, puntuacion y mayusculas.
+5. ESTRUCTURA como prompt directo: imperativo claro, sin rodeos.
+6. NO inventes informacion: si el usuario no especifico algo, no lo agregues.
+7. PRESERVA toda informacion concreta (nombres de archivos, valores, nombres propios, numeros).
+8. Mantiene el TONO directo del usuario. Espanol latino neutro con "tu". NUNCA voseo argentino ("vos", "tenes", "queres", "dale", "che", etc.). Conjuga con "tu".
+9. Responde SOLO con el prompt limpio. Sin preambulo, sin comillas, sin explicacion.
+
+EJEMPLOS:
+
+Entrada: este eh queria ver si podriamos eh agregar un boton este mas grande para iniciar sesion
+Salida: Agrega un boton mas grande para iniciar sesion.
+
+Entrada: a ver mira fijate el codigo del login esta como roto creo que es por el token o algo asi
+Salida: Revisa el codigo del login. Parece estar roto, posiblemente por un problema con el token.
+
+Entrada: este bueno entonces lo que necesito es que arregles el bug del deploy y tambien que veas si la api de groq esta funcionando bien
+Salida: Arregla el bug del deploy y verifica si la API de Groq esta funcionando correctamente.
+
+Entrada: ok asi quedo bien
+Salida: Asi quedo bien, no hagas mas cambios.
+
+Entrada: necesito que hagas tres cosas primero subir el repo segundo arreglar el bug del login y tercero actualizar el readme
+Salida: Necesito que hagas tres cosas:
+1. Subir el repo
+2. Arreglar el bug del login
+3. Actualizar el README
+
+Devuelve SOLO el prompt limpio. Sin comillas. Sin preambulo. Sin explicacion."""
+
+
 class GroqError(Exception):
     """Error general del cliente Groq."""
 
@@ -88,22 +127,23 @@ class GroqClient:
         self._current = next(self._cycle)
         return self._current
 
-    async def enhance_prompt(self, text: str) -> str:
+    async def enhance_prompt(self, text: str, source: str = "texto") -> str:
         async with self._lock:
-            return await self._enhance_with_rotation(text)
+            return await self._enhance_with_rotation(text, source)
 
-    async def _enhance_with_rotation(self, text: str) -> str:
+    async def _enhance_with_rotation(self, text: str, source: str) -> str:
         errors: list[str] = []
         for _ in range(len(self._keys)):
             try:
-                return await self._call_chat(text, self._current)
+                return await self._call_chat(text, self._current, source)
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 logger.warning(f"Groq key fallo ({type(e).__name__}): {e}; rotando")
                 errors.append(f"{type(e).__name__}: {e}")
                 self._rotate()
         raise GroqAllKeysFailed(f"Todas las keys fallaron. Ultimos errores: {errors[-3:]}")
 
-    async def _call_chat(self, text: str, api_key: str) -> str:
+    async def _call_chat(self, text: str, api_key: str, source: str = "texto") -> str:
+        system = ENHANCE_AUDIO_SYSTEM_PROMPT if source == "voz" else ENHANCE_SYSTEM_PROMPT
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
                 f"{GROQ_BASE_URL}/chat/completions",
@@ -111,10 +151,10 @@ class GroqClient:
                 json={
                     "model": CHAT_MODEL,
                     "messages": [
-                        {"role": "system", "content": ENHANCE_SYSTEM_PROMPT},
+                        {"role": "system", "content": system},
                         {"role": "user", "content": text},
                     ],
-                    "temperature": 0.1,
+                    "temperature": 0.2 if source == "voz" else 0.1,
                     "max_tokens": 1024,
                 },
             )
