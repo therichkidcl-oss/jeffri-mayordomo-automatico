@@ -26,10 +26,16 @@ function connect() {
 
 function handleServerMessage(data) {
   switch (data.type) {
-    case 'welcome': addSystemMessage(data.message); break;
+    case 'welcome':
+      addSystemMessage(data.message);
+      if (window.batcaveShowSpeech) window.batcaveShowSpeech('Bienvenido, Sir Rich.');
+      break;
     case 'confirm_enhanced': renderEnhancedConfirm(data); break;
     case 'confirm_destructive': renderDestructiveConfirm(data); break;
-    case 'sent': addSystemMessage(`✉️ Enviado: ${data.text.slice(0, 80)}`); break;
+    case 'sent':
+      addSystemMessage(`✉️ Enviado: ${data.text.slice(0, 80)}`);
+      if (window.batcaveShowSpeech) window.batcaveShowSpeech('Entregado a Claude, senor.');
+      break;
     case 'cancelled': addSystemMessage('❌ Cancelado'); break;
     case 'error': addSystemMessage(`❌ ${data.message}`); break;
   }
