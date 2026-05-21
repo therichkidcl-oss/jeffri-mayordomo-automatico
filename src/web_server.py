@@ -38,6 +38,12 @@ def create_app(state) -> FastAPI:
     async def ws_chat_endpoint(websocket: WebSocket):
         await handle_chat_ws(websocket, state)
 
+    from src.ws_events import handle_events_ws
+
+    @app.websocket("/ws/events")
+    async def ws_events_endpoint(websocket: WebSocket):
+        await handle_events_ws(websocket)
+
     from src.api_routes import create_router
     app.include_router(create_router(state))
 

@@ -118,3 +118,39 @@ document.getElementById('chat-form').addEventListener('submit', (e) => {
 });
 
 connect();
+
+let eventsWs = null;
+
+function connectEvents() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  eventsWs = new WebSocket(`${proto}//${window.location.host}/ws/events`);
+
+  eventsWs.onmessage = (event) => {
+    let data;
+    try { data = JSON.parse(event.data); } catch (e) { return; }
+    if (data.type === 'claude_text') {
+      addJeffriMessage(`🤖 ${data.text}`);
+      if (window.batcaveShowSpeech) window.batcaveShowSpeech(data.text);
+    } else if (data.type === 'claude_photo') {
+      const wrap = document.createElement('div');
+      wrap.className = 'msg-jeffri';
+      const img = document.createElement('img');
+      img.src = `data:image/png;base64,${data.png_b64}`;
+      img.className = 'max-w-full rounded';
+      wrap.appendChild(img);
+      if (data.caption) {
+        const cap = document.createElement('div');
+        cap.textContent = data.caption;
+        cap.className = 'text-xs mt-1 opacity-70';
+        wrap.appendChild(cap);
+      }
+      const messages = document.getElementById('messages');
+      messages.appendChild(wrap);
+      messages.scrollTop = 99999;
+    }
+  };
+
+  eventsWs.onclose = () => setTimeout(connectEvents, 2000);
+}
+
+connectEvents();

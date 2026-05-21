@@ -686,15 +686,23 @@ async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _process_user_text(update, transcript, source="voz")
 
 
-async def _forward_event_to_telegram(app: Application, event: dict):
+async def _forward_event(app: Application, event: dict):
     if state.paused:
         return
     messages = format_event(event)
+    from src.ws_events import broadcaster
+    import base64
     for msg in messages:
         if isinstance(msg, TextMessage):
             await _send_text(app, msg.text)
+            await broadcaster.broadcast({"type": "claude_text", "text": msg.text})
         elif isinstance(msg, PhotoMessage):
             await _send_photo(app, msg.data, msg.caption)
+            await broadcaster.broadcast({
+                "type": "claude_photo",
+                "png_b64": base64.b64encode(msg.data).decode(),
+                "caption": msg.caption,
+            })
 
 
 async def _send_text(app: Application, text: str):
@@ -741,7 +749,7 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
 
 async def post_init(app: Application):
     async def on_event(event: dict):
-        await _forward_event_to_telegram(app, event)
+        await _forward_event(app, event)
 
     watcher = TranscriptWatcher(CLAUDE_PROJECTS_DIR, on_event)
     watcher.start()
