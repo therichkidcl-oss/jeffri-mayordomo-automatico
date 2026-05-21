@@ -276,4 +276,35 @@ Uso personal. No es producto comercial. Anthropic's terms of service para Claude
 
 ---
 
+## 🦇 Modo Batcave (web UI local)
+
+Ademas de Telegram, Jeffri sirve una web local en `http://localhost:8000` con tema Batcave pixel art. Mismo backend, dos canales en paralelo.
+
+### Que tiene
+
+- Chat con Jeffri (mismo flujo de enhancer Groq + confirmacion que Telegram)
+- Escena pixel art con Jeffri respirando en su escritorio, monitor Batcomputer
+- Toolbar con botones: 📁 Proyectos, 📸 Captura, ⏹ Stop
+- Mensajes y screenshots de Claude reenviados en tiempo real (WebSocket)
+- Telegram sigue funcionando en paralelo
+
+### Acceso solo desde tu PC (default)
+
+Doble-click en `run.bat` y abrir Chrome en `http://localhost:8000`.
+
+### Acceso desde celular en tu red local
+
+1. Editar `.env`:
+   ```
+   WEB_BIND=0.0.0.0
+   WEB_AUTH_TOKEN=un_token_secreto_aqui
+   ```
+2. Reiniciar el bot.
+3. En el celular: `http://192.168.x.x:8000?token=un_token_secreto_aqui` (primera vez).
+   El token queda guardado en localStorage del navegador.
+
+**Importante**: si NO seteas `WEB_AUTH_TOKEN` y pones `WEB_BIND=0.0.0.0`, cualquiera en la red puede usar el bot. Siempre setea el token si expones la red.
+
+---
+
 🎩 *— A su servicio, Sir Rich.*

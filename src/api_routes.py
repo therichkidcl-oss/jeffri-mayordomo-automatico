@@ -2,13 +2,18 @@
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from src.config import CLAUDE_PROJECTS_DIR
+from src.config import CLAUDE_PROJECTS_DIR, WEB_AUTH_TOKEN
 from src.session_detector import list_projects
 
 logger = logging.getLogger(__name__)
+
+
+async def require_auth(x_auth_token: str = Header(default="")):
+    if WEB_AUTH_TOKEN and x_auth_token != WEB_AUTH_TOKEN:
+        raise HTTPException(status_code=401, detail="auth required")
 
 
 class SwitchRequest(BaseModel):
@@ -16,7 +21,7 @@ class SwitchRequest(BaseModel):
 
 
 def create_router(bot_state) -> APIRouter:
-    router = APIRouter(prefix="/api")
+    router = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
 
     @router.get("/projects")
     async def get_projects():
