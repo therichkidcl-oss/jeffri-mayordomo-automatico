@@ -31,6 +31,13 @@ def create_app(state) -> FastAPI:
             "groq_available": state.groq is not None,
         }
 
+    from fastapi import WebSocket
+    from src.ws_chat import handle_chat_ws
+
+    @app.websocket("/ws/chat")
+    async def ws_chat_endpoint(websocket: WebSocket):
+        await handle_chat_ws(websocket, state)
+
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
     logger.info(f"FastAPI app creada, static dir: {static_dir}")
     return app
