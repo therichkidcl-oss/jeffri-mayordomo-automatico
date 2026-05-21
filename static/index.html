@@ -10,7 +10,12 @@
 <body class="bg-slate-900 text-amber-100 min-h-screen flex flex-col">
   <header class="border-b border-amber-700/40 p-4 flex justify-between items-center">
     <h1 class="text-2xl font-bold tracking-wider">🦇 Batcave — Jeffri al servicio</h1>
-    <div id="status" class="text-sm text-amber-300/70">Conectando...</div>
+    <div class="flex gap-2 items-center">
+      <button id="btn-projects" class="bg-amber-700 hover:bg-amber-600 px-3 py-1 rounded text-sm">📁 Proyectos</button>
+      <button id="btn-capture" class="bg-amber-700 hover:bg-amber-600 px-3 py-1 rounded text-sm">📸 Captura</button>
+      <button id="btn-stop" class="bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-sm">⏹ Stop</button>
+      <div id="status" class="text-sm text-amber-300/70 ml-4">Conectando...</div>
+    </div>
   </header>
 
   <main class="flex-1 grid grid-cols-3 gap-4 p-4 max-w-7xl mx-auto w-full">
@@ -32,5 +37,6 @@
   <script type="module" src="/static/js/state.js"></script>
   <script type="module" src="/static/js/chat.js"></script>
   <script type="module" src="/static/js/scene_batcave.js"></script>
+  <script type="module" src="/static/js/toolbar.js"></script>
 </body>
 </html>
