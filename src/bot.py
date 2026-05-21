@@ -4,6 +4,7 @@ import time
 import uuid
 from io import BytesIO
 
+import uvicorn
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -15,18 +16,21 @@ from telegram.ext import (
     filters,
 )
 
-from src.claude_controller import ClaudeController, ClaudeNotOpenError, PCLockedError
+from src.claude_controller import ClaudeController, ClaudeControllerError, ClaudeNotOpenError, PCLockedError
 from src.config import (
     ALLOWED_USER_ID,
     CLAUDE_PROJECTS_DIR,
     GROQ_API_KEYS,
     TELEGRAM_BOT_TOKEN,
+    WEB_BIND,
+    WEB_PORT,
 )
 from src.formatters import PhotoMessage, TextMessage, format_event
 from src.groq_client import GroqAllKeysFailed, GroqClient, GroqError
 from src.security import is_destructive, requires_whitelist
 from src.session_detector import detect_active_session, list_projects, list_recent_sessions, list_sessions_in_folder
 from src.transcript_watcher import TranscriptWatcher
+from src.web_server import create_app
 
 logging.basicConfig(
     level=logging.INFO,
@@ -465,9 +469,40 @@ async def _handle_project_open(query, decision: str, token: str):
         )
     except (ClaudeNotOpenError, PCLockedError) as e:
         await query.message.reply_text(f"❌ {e}")
+    except ClaudeControllerError as e:
+        await _offer_sidebar_alternatives(query, str(e))
     except Exception as e:
         logger.exception("Error cambiando proyecto")
         await query.message.reply_text(f"❌ {e}")
+
+
+async def _offer_sidebar_alternatives(query, error_msg: str):
+    try:
+        headers = await state.controller.list_sidebar_headers()
+    except Exception as e:
+        logger.exception("Error obteniendo sidebar via OCR")
+        await query.message.reply_text(f"❌ {error_msg}")
+        return
+
+    if not headers:
+        await query.message.reply_text(
+            f"❌ {error_msg}\n\nNo pude leer el sidebar para sugerir alternativas, Sir Rich."
+        )
+        return
+
+    buttons = []
+    for h in headers[:25]:
+        switch_token = uuid.uuid4().hex[:8]
+        state.pending_switch[switch_token] = h
+        buttons.append([InlineKeyboardButton(f"💬 {h[:55]}", callback_data=f"switch:go:{switch_token}")])
+
+    await query.message.reply_text(
+        f"❌ {error_msg}\n\n"
+        f"📋 *Esto es lo que veo en el sidebar, Sir Rich:*\n"
+        f"Tocá el correcto y lo abro.",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 async def _handle_switch_callback(query, decision: str, token: str):
@@ -715,6 +750,15 @@ async def post_init(app: Application):
         watcher.set_active_file(active)
     app.bot_data["session_switch_task"] = asyncio.create_task(_watch_active_session(app, watcher))
     app.bot_data["watcher"] = watcher
+
+    web_app = create_app(state)
+    config = uvicorn.Config(
+        web_app, host=WEB_BIND, port=WEB_PORT,
+        log_level="warning", access_log=False,
+    )
+    server = uvicorn.Server(config)
+    app.bot_data["web_server_task"] = asyncio.create_task(server.serve())
+    logger.info(f"Batcave web disponible en http://{WEB_BIND}:{WEB_PORT}")
 
 
 def main():
