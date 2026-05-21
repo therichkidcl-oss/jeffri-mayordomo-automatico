@@ -499,7 +499,7 @@ async def _offer_sidebar_alternatives(query, error_msg: str):
     await query.message.reply_text(
         f"❌ {error_msg}\n\n"
         f"📋 *Esto es lo que veo en el sidebar, Sir Rich:*\n"
-        f"Tocá el correcto y lo abro.",
+        f"Toca el correcto y lo abro.",
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=ParseMode.MARKDOWN,
     )
