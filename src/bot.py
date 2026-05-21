@@ -757,7 +757,12 @@ async def post_init(app: Application):
         log_level="warning", access_log=False,
     )
     server = uvicorn.Server(config)
-    app.bot_data["web_server_task"] = asyncio.create_task(server.serve())
+    task = asyncio.create_task(server.serve())
+    await asyncio.sleep(0.1)
+    if task.done():
+        task.result()
+    app.bot_data["web_server"] = server
+    app.bot_data["web_server_task"] = task
     logger.info(f"Batcave web disponible en http://{WEB_BIND}:{WEB_PORT}")
 
 
