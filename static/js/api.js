@@ -38,3 +38,18 @@ export async function stopClaude() {
   const res = await fetch('/api/stop', { method: 'POST', headers: authHeaders() });
   return res.json();
 }
+
+export async function uploadImage(file, caption = '') {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('caption', caption);
+  const headers = {};
+  if (AUTH_TOKEN) headers['X-Auth-Token'] = AUTH_TOKEN;
+  const res = await fetch('/api/upload-image', {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!res.ok) throw new Error((await res.json()).detail);
+  return res.json();
+}

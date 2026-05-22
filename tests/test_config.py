@@ -19,6 +19,7 @@ def test_config_loads_from_env(monkeypatch):
 
 def test_config_fails_without_token(monkeypatch):
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_ENABLED", raising=False)
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_ID", "987654321")
     monkeypatch.setenv("CLAUDE_PROJECTS_DIR", "C:\\fake\\path")
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: None)

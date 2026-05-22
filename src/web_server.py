@@ -3,8 +3,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,16 @@ def create_app(state) -> FastAPI:
         if not index_path.exists():
             return HTMLResponse("<h1>Batcave under construction</h1>")
         return HTMLResponse(index_path.read_text(encoding="utf-8"))
+
+    @app.get("/static/{path:path}")
+    async def serve_static_nocache(path: str):
+        file_path = static_dir / path
+        if not file_path.is_file():
+            return HTMLResponse("Not found", status_code=404)
+        return FileResponse(
+            file_path,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     @app.get("/api/state")
     async def get_state():
@@ -47,6 +56,5 @@ def create_app(state) -> FastAPI:
     from src.api_routes import create_router
     app.include_router(create_router(state))
 
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
     logger.info(f"FastAPI app creada, static dir: {static_dir}")
     return app

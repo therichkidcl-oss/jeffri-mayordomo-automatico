@@ -62,4 +62,20 @@ def create_router(bot_state) -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    from fastapi import UploadFile, File, Form
+
+    @router.post("/upload-image")
+    async def upload_image(
+        image: UploadFile = File(...),
+        caption: str = Form(default=""),
+    ):
+        try:
+            data = await image.read()
+            caption_clean = caption.strip() or None
+            async with bot_state.send_lock:
+                await bot_state.controller.send_image(data, caption=caption_clean)
+            return {"ok": True, "size": len(data), "caption": caption_clean}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     return router
