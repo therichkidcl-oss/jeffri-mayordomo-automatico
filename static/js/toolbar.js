@@ -38,13 +38,18 @@ document.getElementById('btn-stop').onclick = async () => {
 
 function showProjectPicker(projects) {
   const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50';
+  modal.className = 'fixed inset-0 flex items-center justify-center z-50';
+  modal.style.background = 'rgba(0, 0, 0, 0.85)';
 
   const dialog = document.createElement('div');
-  dialog.className = 'bg-slate-800 border border-amber-700 rounded p-6 max-w-md w-full max-h-[80vh] overflow-y-auto';
+  dialog.className = 'rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto';
+  dialog.style.background = 'linear-gradient(180deg, #141414 0%, #0f0f0f 100%)';
+  dialog.style.border = '1px solid #f97316';
+  dialog.style.boxShadow = '0 8px 32px rgba(249, 115, 22, 0.2)';
 
   const title = document.createElement('h2');
   title.className = 'text-xl font-bold mb-4';
+  title.style.color = '#f97316';
   title.textContent = '📁 Proyectos';
   dialog.appendChild(title);
 
@@ -54,7 +59,18 @@ function showProjectPicker(projects) {
 
   projects.forEach(p => {
     const btn = document.createElement('button');
-    btn.className = 'block w-full text-left bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded';
+    btn.className = 'block w-full text-left px-3 py-2 rounded transition-colors';
+    btn.style.background = '#1a1a1a';
+    btn.style.border = '1px solid #404040';
+    btn.style.color = '#fafafa';
+    btn.onmouseover = () => {
+      btn.style.background = '#2a1305';
+      btn.style.borderColor = '#f97316';
+    };
+    btn.onmouseout = () => {
+      btn.style.background = '#1a1a1a';
+      btn.style.borderColor = '#404040';
+    };
     btn.textContent = `📁 ${p.display_name} · ${p.session_count}`;
     btn.onclick = async () => {
       modal.remove();
@@ -70,7 +86,18 @@ function showProjectPicker(projects) {
 
   const close = document.createElement('button');
   close.textContent = 'Cerrar';
-  close.className = 'mt-4 bg-red-700 px-3 py-1 rounded';
+  close.className = 'mt-4 px-4 py-1.5 rounded font-bold transition-all';
+  close.style.background = '#1a0606';
+  close.style.color = '#fca5a5';
+  close.style.border = '1px solid #7f1d1d';
+  close.onmouseover = () => {
+    close.style.background = '#dc2626';
+    close.style.color = '#fafafa';
+  };
+  close.onmouseout = () => {
+    close.style.background = '#1a0606';
+    close.style.color = '#fca5a5';
+  };
   close.onclick = () => modal.remove();
   dialog.appendChild(close);
 

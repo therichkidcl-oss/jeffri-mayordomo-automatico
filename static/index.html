@@ -7,33 +7,34 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/static/css/main.css">
 </head>
-<body class="bg-slate-900 text-amber-100 min-h-screen flex flex-col">
-  <header class="border-b border-amber-700/40 p-4 flex justify-between items-center">
-    <h1 class="text-2xl font-bold tracking-wider">🦇 Batcave — Jeffri al servicio</h1>
+<body class="min-h-screen flex flex-col" style="background:#0a0a0a; color:#fafafa; font-family:'Courier New', Courier, monospace;">
+  <header class="border-b p-4 flex justify-between items-center" style="border-color:#262626; background:linear-gradient(180deg, #0a0a0a 0%, #141414 100%);">
+    <h1 class="text-2xl font-bold tracking-wider flex items-center gap-3" style="color:#fafafa;">
+      <span style="color:#f97316; text-shadow:0 0 12px #f97316aa;">🦇</span>
+      <span>Batcave</span>
+      <span style="color:#737373; font-weight:normal; font-size:0.85em;">— Jeffri al servicio</span>
+    </h1>
     <div class="flex gap-2 items-center">
-      <button id="btn-projects" class="bg-amber-700 hover:bg-amber-600 px-3 py-1 rounded text-sm">📁 Proyectos</button>
-      <button id="btn-capture" class="bg-amber-700 hover:bg-amber-600 px-3 py-1 rounded text-sm">📸 Captura</button>
-      <button id="btn-stop" class="bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-sm">⏹ Stop</button>
-      <div id="status" class="text-sm text-amber-300/70 ml-4">Conectando...</div>
+      <button id="btn-projects" class="btn-toolbar">📁 Proyectos</button>
+      <button id="btn-capture" class="btn-toolbar">📸 Captura</button>
+      <button id="btn-stop" class="btn-toolbar btn-danger">⏹ Stop</button>
+      <div id="status" class="text-sm ml-4" style="color:#a3a3a3;">Conectando...</div>
     </div>
   </header>
 
   <main class="flex-1 grid grid-cols-3 gap-4 p-4 max-w-7xl mx-auto w-full">
-    <section class="col-span-2 bg-slate-800/60 rounded-lg p-2 border border-amber-700/30 flex items-center justify-center">
+    <section class="col-span-2 panel flex items-center justify-center">
       <canvas id="batcave-canvas" width="1024" height="576" class="pixelated w-full"></canvas>
     </section>
 
-    <aside class="bg-slate-800/60 rounded-lg p-4 flex flex-col border border-amber-700/30">
-      <div id="messages" class="flex-1 overflow-y-auto space-y-2 mb-2 min-h-[300px]"></div>
+    <aside class="panel flex flex-col">
+      <div id="messages" class="flex-1 overflow-y-auto space-y-2 mb-2 min-h-[300px] pr-1"></div>
       <div id="attachments" class="flex flex-wrap gap-2 mb-2"></div>
       <form id="chat-form" class="flex gap-2 items-center">
-        <button type="button" id="btn-attach" title="Adjuntar imagenes"
-                class="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-lg">📎</button>
+        <button type="button" id="btn-attach" title="Adjuntar imagenes" class="btn-attach">📎</button>
         <input type="file" id="file-picker" accept="image/*" multiple style="display:none">
-        <input id="chat-input" type="text" placeholder="Sus ordenes, senor..."
-               class="flex-1 bg-slate-900 border border-amber-700/40 rounded px-3 py-2 text-amber-100 placeholder-amber-700/40 focus:outline-none focus:border-amber-500">
-        <button type="submit"
-                class="bg-amber-700 hover:bg-amber-600 px-4 py-2 rounded font-bold">Enviar</button>
+        <input id="chat-input" type="text" placeholder="Sus ordenes, senor..." class="chat-input">
+        <button type="submit" class="btn-send">Enviar</button>
       </form>
     </aside>
   </main>

@@ -101,9 +101,9 @@ function renderEnhancedConfirm(data) {
     ws.send(JSON.stringify({ type: 'confirm_response', token: data.token, choice }));
     buttons.querySelectorAll('button').forEach(b => b.disabled = true);
   };
-  buttons.appendChild(makeButton('✅ Mejorado', 'bg-green-700 hover:bg-green-600 px-2 py-1 rounded text-xs', () => send('send_enhanced')));
-  buttons.appendChild(makeButton('📤 Original', 'bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded text-xs', () => send('send_original')));
-  buttons.appendChild(makeButton('❌ Cancelar', 'bg-red-700 hover:bg-red-600 px-2 py-1 rounded text-xs', () => send('cancel')));
+  buttons.appendChild(makeButton('✅ Mejorado', 'btn-confirm-primary', () => send('send_enhanced')));
+  buttons.appendChild(makeButton('📤 Original', 'btn-confirm-secondary', () => send('send_original')));
+  buttons.appendChild(makeButton('❌ Cancelar', 'btn-confirm-cancel', () => send('cancel')));
   wrap.appendChild(buttons);
 
   document.getElementById('messages').appendChild(wrap);
@@ -126,8 +126,8 @@ function renderDestructiveConfirm(data) {
     ws.send(JSON.stringify({ type: 'confirm_response', token: data.token, choice }));
     buttons.querySelectorAll('button').forEach(b => b.disabled = true);
   };
-  buttons.appendChild(makeButton('✅ Si, mandar', 'bg-green-700 px-2 py-1 rounded text-xs', () => send('send_enhanced')));
-  buttons.appendChild(makeButton('❌ Cancelar', 'bg-red-700 px-2 py-1 rounded text-xs', () => send('cancel')));
+  buttons.appendChild(makeButton('✅ Si, mandar', 'btn-confirm-primary', () => send('send_enhanced')));
+  buttons.appendChild(makeButton('❌ Cancelar', 'btn-confirm-cancel', () => send('cancel')));
   wrap.appendChild(buttons);
 
   document.getElementById('messages').appendChild(wrap);

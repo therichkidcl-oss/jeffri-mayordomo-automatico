@@ -1,5 +1,12 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
   font-family: 'Courier New', Courier, monospace;
+  background: #0a0a0a;
+  color: #fafafa;
+  margin: 0;
 }
 
 .pixelated {
@@ -7,26 +14,218 @@ body {
   image-rendering: crisp-edges;
 }
 
-#messages > div {
-  padding: 0.5rem 0.75rem;
+/* Panels (canvas + chat sidebar) */
+.panel {
+  background: linear-gradient(180deg, #141414 0%, #0f0f0f 100%);
+  border: 1px solid #262626;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  box-shadow: 0 4px 24px rgba(249, 115, 22, 0.08);
+}
+
+/* Toolbar buttons (Proyectos, Captura, Stop) */
+.btn-toolbar {
+  background: #1a1a1a;
+  color: #fafafa;
+  border: 1px solid #404040;
+  padding: 0.4rem 0.85rem;
   border-radius: 0.375rem;
   font-size: 0.875rem;
-  line-height: 1.4;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-toolbar:hover {
+  background: #f97316;
+  border-color: #fb923c;
+  color: #0a0a0a;
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.5);
+  transform: translateY(-1px);
+}
+.btn-toolbar.btn-danger:hover {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #fafafa;
+  box-shadow: 0 0 16px rgba(220, 38, 38, 0.5);
+}
+
+/* Attach (paperclip) button */
+.btn-attach {
+  background: #1a1a1a;
+  color: #fb923c;
+  border: 1px solid #404040;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.375rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-attach:hover {
+  background: #2a2a2a;
+  border-color: #f97316;
+  color: #f97316;
+}
+
+/* Chat input */
+.chat-input {
+  flex: 1;
+  background: #0a0a0a;
+  border: 1px solid #404040;
+  border-radius: 0.375rem;
+  padding: 0.6rem 0.85rem;
+  color: #fafafa;
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.chat-input::placeholder {
+  color: #525252;
+}
+.chat-input:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+
+/* Send button */
+.btn-send {
+  background: linear-gradient(180deg, #f97316 0%, #c2410c 100%);
+  color: #0a0a0a;
+  border: 1px solid #fb923c;
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.375rem;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+}
+.btn-send:hover {
+  background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.5);
+  transform: translateY(-1px);
+}
+.btn-send:active {
+  transform: translateY(0);
+}
+
+/* Messages */
+#messages > div {
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  animation: msgIn 0.2s ease-out;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .msg-user {
-  background: rgba(180, 83, 9, 0.3);
-  border-left: 3px solid rgb(217, 119, 6);
+  background: linear-gradient(135deg, #2a1305 0%, #3d1a06 100%);
+  border-left: 3px solid #f97316;
+  margin-left: 1.5rem;
 }
 
 .msg-jeffri {
-  background: rgba(15, 23, 42, 0.6);
-  border-left: 3px solid rgb(245, 158, 11);
+  background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+  border-left: 3px solid #fb923c;
+  margin-right: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .msg-system {
-  color: rgba(252, 211, 77, 0.6);
+  color: #737373;
   font-style: italic;
   font-size: 0.75rem;
   text-align: center;
+  padding: 0.3rem 0.5rem !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Scrollbar */
+#messages::-webkit-scrollbar {
+  width: 8px;
+}
+#messages::-webkit-scrollbar-track {
+  background: #0a0a0a;
+  border-radius: 4px;
+}
+#messages::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 4px;
+}
+#messages::-webkit-scrollbar-thumb:hover {
+  background: #f97316;
+}
+
+/* Status indicator */
+#status {
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  background: #1a1a1a;
+  border: 1px solid #262626;
+}
+
+/* Drag-over state on form */
+#chat-form.ring {
+  outline: 2px dashed #f97316;
+  outline-offset: 4px;
+  border-radius: 0.5rem;
+}
+
+/* Inline confirm buttons */
+.btn-confirm-primary,
+.btn-confirm-secondary,
+.btn-confirm-cancel {
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  font-family: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-confirm-primary {
+  background: linear-gradient(180deg, #f97316 0%, #c2410c 100%);
+  color: #0a0a0a;
+  border-color: #fb923c;
+}
+.btn-confirm-primary:hover {
+  background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.5);
+}
+
+.btn-confirm-secondary {
+  background: #1f1f1f;
+  color: #fafafa;
+  border-color: #525252;
+}
+.btn-confirm-secondary:hover {
+  background: #2a2a2a;
+  border-color: #f97316;
+  color: #f97316;
+}
+
+.btn-confirm-cancel {
+  background: #1a0606;
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+.btn-confirm-cancel:hover {
+  background: #dc2626;
+  color: #fafafa;
+  border-color: #ef4444;
+}
+
+.btn-confirm-primary:disabled,
+.btn-confirm-secondary:disabled,
+.btn-confirm-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
