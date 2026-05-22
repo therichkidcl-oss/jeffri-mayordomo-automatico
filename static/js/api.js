@@ -53,3 +53,23 @@ export async function uploadImage(file, caption = '') {
   if (!res.ok) throw new Error((await res.json()).detail);
   return res.json();
 }
+
+export async function sendUnified(text, images) {
+  const formData = new FormData();
+  formData.append('text', text || '');
+  for (const img of images) {
+    formData.append('images', img);
+  }
+  const headers = {};
+  if (AUTH_TOKEN) headers['X-Auth-Token'] = AUTH_TOKEN;
+  const res = await fetch('/api/send', {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail);
+  }
+  return res.json();
+}

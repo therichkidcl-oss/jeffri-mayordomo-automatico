@@ -1,4 +1,4 @@
-import { listProjects, switchProject, capture, stopClaude, uploadImage } from './api.js';
+import { listProjects, switchProject, capture, stopClaude } from './api.js';
 import { addSystemMessage } from './state.js';
 
 document.getElementById('btn-projects').onclick = async () => {
@@ -34,23 +34,6 @@ document.getElementById('btn-stop').onclick = async () => {
   } catch (e) {
     addSystemMessage(`❌ ${e.message}`);
   }
-};
-
-document.getElementById('btn-upload').onclick = () => {
-  document.getElementById('hidden-upload').click();
-};
-
-document.getElementById('hidden-upload').onchange = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const caption = prompt('Caption (opcional):') || '';
-  try {
-    const result = await uploadImage(file, caption);
-    addSystemMessage(`🖼 Imagen enviada (${result.size} bytes)${caption ? `: ${caption}` : ''}`);
-  } catch (err) {
-    addSystemMessage(`❌ ${err.message}`);
-  }
-  e.target.value = '';
 };
 
 function showProjectPicker(projects) {

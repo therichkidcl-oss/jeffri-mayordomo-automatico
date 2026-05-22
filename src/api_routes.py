@@ -1,8 +1,9 @@
 """Endpoints REST de la Batcave."""
 import base64
 import logging
+from typing import List
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from src.config import CLAUDE_PROJECTS_DIR, WEB_AUTH_TOKEN
@@ -62,8 +63,6 @@ def create_router(bot_state) -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    from fastapi import UploadFile, File, Form
-
     @router.post("/upload-image")
     async def upload_image(
         image: UploadFile = File(...),
@@ -75,6 +74,30 @@ def create_router(bot_state) -> APIRouter:
             async with bot_state.send_lock:
                 await bot_state.controller.send_image(data, caption=caption_clean)
             return {"ok": True, "size": len(data), "caption": caption_clean}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/send")
+    async def send_unified(
+        text: str = Form(default=""),
+        images: List[UploadFile] = File(default=[]),
+    ):
+        text_clean = text.strip()
+        try:
+            if images:
+                data_list = [await img.read() for img in images]
+                caption_clean = text_clean or None
+                async with bot_state.send_lock:
+                    await bot_state.controller.send_images(data_list, caption=caption_clean)
+                return {"ok": True, "image_count": len(images), "caption": caption_clean}
+            elif text_clean:
+                async with bot_state.send_lock:
+                    await bot_state.controller.send(text_clean)
+                return {"ok": True, "text": text_clean}
+            else:
+                raise HTTPException(status_code=400, detail="empty payload")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

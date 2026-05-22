@@ -1,8 +1,35 @@
 import { addJeffriMessage, addUserMessage, addSystemMessage } from './state.js';
+import { sendUnified } from './api.js';
 
 let ws = null;
 let reconnectDelay = 1000;
 const MAX_DELAY = 10000;
+
+const attachments = [];  // Array of File objects
+
+function renderAttachments() {
+  const wrap = document.getElementById('attachments');
+  wrap.replaceChildren();
+  attachments.forEach((file, idx) => {
+    const item = document.createElement('div');
+    item.className = 'relative inline-block';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    img.className = 'w-16 h-16 object-cover rounded border border-amber-700/40';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.textContent = '×';
+    x.className = 'absolute -top-1 -right-1 bg-red-700 rounded-full w-5 h-5 flex items-center justify-center text-xs';
+    x.onclick = () => {
+      URL.revokeObjectURL(img.src);
+      attachments.splice(idx, 1);
+      renderAttachments();
+    };
+    item.appendChild(img);
+    item.appendChild(x);
+    wrap.appendChild(item);
+  });
+}
 
 function connect() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -107,10 +134,57 @@ function renderDestructiveConfirm(data) {
   document.getElementById('messages').scrollTop = 99999;
 }
 
-document.getElementById('chat-form').addEventListener('submit', (e) => {
+document.getElementById('btn-attach').onclick = () => {
+  document.getElementById('file-picker').click();
+};
+
+document.getElementById('file-picker').onchange = (e) => {
+  for (const file of e.target.files) {
+    if (file.type.startsWith('image/')) attachments.push(file);
+  }
+  renderAttachments();
+  e.target.value = '';
+};
+
+const chatForm = document.getElementById('chat-form');
+chatForm.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  chatForm.classList.add('ring', 'ring-amber-500');
+});
+chatForm.addEventListener('dragleave', () => {
+  chatForm.classList.remove('ring', 'ring-amber-500');
+});
+chatForm.addEventListener('drop', (e) => {
+  e.preventDefault();
+  chatForm.classList.remove('ring', 'ring-amber-500');
+  for (const file of e.dataTransfer.files) {
+    if (file.type.startsWith('image/')) attachments.push(file);
+  }
+  renderAttachments();
+});
+
+document.getElementById('chat-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
+
+  // Si hay attachments, usar el REST endpoint /api/send
+  if (attachments.length > 0) {
+    const filesToSend = attachments.slice();
+    attachments.length = 0;
+    input.value = '';
+    renderAttachments();
+    addUserMessage(`${text || '(sin texto)'} 🖼 +${filesToSend.length}`);
+    try {
+      await sendUnified(text, filesToSend);
+      addSystemMessage(`🖼 Enviado: ${filesToSend.length} imagen(es)${text ? ' con texto' : ''}`);
+    } catch (err) {
+      addSystemMessage(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  // Sin attachments: ruta tradicional via WebSocket (con enhancer)
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   addUserMessage(text);
   ws.send(JSON.stringify({ type: 'user_text', text }));
