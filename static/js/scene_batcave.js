@@ -108,13 +108,20 @@ function drawFurniture() {
   }
 }
 
+const JEFFRI_FRAME_W = 16;
+const JEFFRI_FRAME_H = 32;
+
 function drawJeffri() {
   if (!assets.jeffri) return;
-  const w = assets.jeffri.width * SCALE;
-  const h = assets.jeffri.height * SCALE;
+  const sx = 0;  // column 0
+  const sy = 0;  // row 0
+  const sw = JEFFRI_FRAME_W;
+  const sh = JEFFRI_FRAME_H;
+  const w = sw * SCALE;
+  const h = sh * SCALE;
   const x = W / 2 - w / 2;
   const y = H - 100 - h + 30 + Math.sin(bobPhase) * 2;
-  ctx.drawImage(assets.jeffri, x, y, w, h);
+  ctx.drawImage(assets.jeffri, sx, sy, sw, sh, x, y, w, h);
 
   if (speechText && Date.now() < speechExpire) {
     const txt = speechText.slice(0, 40);

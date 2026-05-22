@@ -22,6 +22,7 @@ from src.config import (
     CLAUDE_PROJECTS_DIR,
     GROQ_API_KEYS,
     TELEGRAM_BOT_TOKEN,
+    TELEGRAM_ENABLED,
     WEB_BIND,
     WEB_PORT,
 )
@@ -774,7 +775,65 @@ async def post_init(app: Application):
     logger.info(f"Batcave web disponible en http://{WEB_BIND}:{WEB_PORT}")
 
 
+async def _run_web_only():
+    """Modo web-only: sin Telegram, solo Batcave web + watcher."""
+    logger.info("Modo web-only (TELEGRAM_ENABLED=false)")
+
+    async def on_event(event: dict):
+        await _forward_event_web_only(event)
+
+    watcher = TranscriptWatcher(CLAUDE_PROJECTS_DIR, on_event)
+    watcher.start()
+    active = detect_active_session(CLAUDE_PROJECTS_DIR)
+    if active:
+        watcher.set_active_file(active)
+
+    web_app = create_app(state)
+    config = uvicorn.Config(
+        web_app, host=WEB_BIND, port=WEB_PORT,
+        log_level="warning", access_log=False,
+    )
+    server = uvicorn.Server(config)
+    web_task = asyncio.create_task(server.serve())
+    await asyncio.sleep(0.1)
+    if web_task.done():
+        web_task.result()
+
+    logger.info(f"Batcave web disponible en http://{WEB_BIND}:{WEB_PORT}")
+
+    # Mantener el proceso vivo + poll de sesion activa
+    while True:
+        try:
+            new_active = detect_active_session(CLAUDE_PROJECTS_DIR)
+            if new_active and new_active != watcher._active_file:
+                watcher.set_active_file(new_active)
+        except Exception:
+            logger.exception("Error en poll de sesion activa")
+        await asyncio.sleep(5)
+
+
+async def _forward_event_web_only(event: dict):
+    if state.paused:
+        return
+    messages = format_event(event)
+    from src.ws_events import broadcaster
+    import base64
+    for msg in messages:
+        if isinstance(msg, TextMessage):
+            await broadcaster.broadcast({"type": "claude_text", "text": msg.text})
+        elif isinstance(msg, PhotoMessage):
+            await broadcaster.broadcast({
+                "type": "claude_photo",
+                "png_b64": base64.b64encode(msg.data).decode(),
+                "caption": msg.caption,
+            })
+
+
 def main():
+    if not TELEGRAM_ENABLED:
+        asyncio.run(_run_web_only())
+        return
+
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))

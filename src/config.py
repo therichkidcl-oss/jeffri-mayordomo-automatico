@@ -12,8 +12,9 @@ def _require(name: str) -> str:
     return value
 
 
-TELEGRAM_BOT_TOKEN: str = _require("TELEGRAM_BOT_TOKEN")
-ALLOWED_USER_ID: int = int(_require("TELEGRAM_ALLOWED_USER_ID"))
+TELEGRAM_ENABLED: bool = os.environ.get("TELEGRAM_ENABLED", "true").lower() in ("true", "1", "yes")
+TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "") if not TELEGRAM_ENABLED else _require("TELEGRAM_BOT_TOKEN")
+ALLOWED_USER_ID: int = int(os.environ.get("TELEGRAM_ALLOWED_USER_ID", "0")) if not TELEGRAM_ENABLED else int(_require("TELEGRAM_ALLOWED_USER_ID"))
 CLAUDE_PROJECTS_DIR: Path = Path(_require("CLAUDE_PROJECTS_DIR"))
 
 _groq_keys_raw = os.environ.get("GROQ_API_KEYS", "")
