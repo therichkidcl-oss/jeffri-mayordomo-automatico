@@ -24,10 +24,12 @@ from src.config import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_ENABLED,
     WEB_BIND,
+    WEB_ENABLED,
     WEB_PORT,
 )
 from src.formatters import PhotoMessage, TextMessage, format_event
 from src.groq_client import GroqAllKeysFailed, GroqClient, GroqError
+from src.menu import KEYBOARD_ROUTES, bot_command_menu, main_reply_keyboard
 from src.security import is_destructive, requires_whitelist
 from src.session_detector import detect_active_session, list_projects, list_recent_sessions, list_sessions_in_folder
 from src.transcript_watcher import TranscriptWatcher
@@ -83,7 +85,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"👋 Hola Sir Rich. Sesion activa: `{active.parent.name}`"
     else:
         msg = "👋 Hola Sir Rich. No detecte ninguna sesion activa. Abre Claude Desktop."
-    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    msg += "\n\nUsa el boton *Menu* o los botones de abajo para elegir comandos."
+    await update.message.reply_text(
+        msg,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_reply_keyboard(),
+    )
 
 
 @requires_whitelist
@@ -255,9 +262,37 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Texto → mejorado por Groq → confirmas → Claude\n"
         "• Voz/audio → transcrito por Whisper → mejorado → confirmas → Claude\n"
         "• Foto → pegada en Claude (con caption si lo pones)\n"
-        "• Texto destructivo → confirmacion Si/No"
+        "• Texto destructivo → confirmacion Si/No\n\n"
+        "💡 Toca el boton *Menu* (abajo-izquierda) o los botones fijos de abajo "
+        "para elegir comandos sin escribirlos."
     )
-    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(
+        msg,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_reply_keyboard(),
+    )
+
+
+# --- Teclado flotante: enruta la etiqueta del boton al comando correspondiente ---
+_KEYBOARD_HANDLERS = {
+    "proyectos": cmd_proyectos,
+    "estado": cmd_estado,
+    "captura": cmd_captura,
+    "stop": cmd_stop,
+    "enhancer": cmd_enhancer,
+    "ayuda": cmd_ayuda,
+}
+
+
+@requires_whitelist
+async def on_keyboard_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    label = (update.message.text or "").strip()
+    cmd_name = KEYBOARD_ROUTES.get(label)
+    if cmd_name is None:
+        return
+    handler = _KEYBOARD_HANDLERS.get(cmd_name)
+    if handler is not None:
+        await handler(update, context)
 
 
 def _destructive_keyboard(token: str) -> InlineKeyboardMarkup:
@@ -749,6 +784,12 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
 
 
 async def post_init(app: Application):
+    try:
+        await app.bot.set_my_commands(bot_command_menu())
+        logger.info("Menu de comandos registrado en Telegram (boton Menu)")
+    except Exception as e:
+        logger.warning(f"No pude registrar el menu de comandos: {e}")
+
     async def on_event(event: dict):
         await _forward_event(app, event)
 
@@ -759,6 +800,10 @@ async def post_init(app: Application):
         watcher.set_active_file(active)
     app.bot_data["session_switch_task"] = asyncio.create_task(_watch_active_session(app, watcher))
     app.bot_data["watcher"] = watcher
+
+    if not WEB_ENABLED:
+        logger.info("Web Batcave deshabilitada (WEB_ENABLED=false). Solo Telegram.")
+        return
 
     web_app = create_app(state)
     config = uvicorn.Config(
@@ -851,6 +896,9 @@ def main():
     app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch|proj|img):"))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice_or_audio))
+    # El teclado flotante manda la etiqueta como texto: interceptala ANTES del
+    # handler general para que ejecute el comando en vez de mandarla a Claude.
+    app.add_handler(MessageHandler(filters.Text(set(KEYBOARD_ROUTES.keys())), on_keyboard_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))
 
     logger.info("Bot iniciando...")
