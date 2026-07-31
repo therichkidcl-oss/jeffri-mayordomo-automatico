@@ -32,6 +32,7 @@ from src.groq_client import GroqAllKeysFailed, GroqClient, GroqError
 from src.menu import KEYBOARD_ROUTES, bot_command_menu, main_reply_keyboard
 from src.security import is_destructive, requires_whitelist
 from src.session_detector import detect_active_session, list_projects, list_recent_sessions, list_sessions_in_folder
+from src.session_tracker import SessionTracker
 from src.transcript_watcher import TranscriptWatcher
 from src.web_server import create_app
 
@@ -763,21 +764,26 @@ async def _send_photo(app: Application, data: bytes, caption: str | None):
 
 
 async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
+    tracker = SessionTracker(stability=2)
+    # Arranca sincronizado con el archivo que post_init ya dejo fijado.
+    tracker.current = watcher._active_file
     while True:
         try:
             active = detect_active_session(CLAUDE_PROJECTS_DIR)
-            if active and active != watcher._active_file:
-                previous = watcher._active_file
-                watcher.set_active_file(active)
-                if previous is not None:
-                    try:
-                        await app.bot.send_message(
-                            chat_id=ALLOWED_USER_ID,
-                            text=f"ℹ️ Cambie el seguimiento, Sir Rich. Ahora sigo: `{active.parent.name}`",
-                            parse_mode=ParseMode.MARKDOWN,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not notify session switch: {e}")
+            to_announce = tracker.observe(active, state.paused)
+            # Sigue el archivo que el tracker considera actual (cambio ya estable).
+            if tracker.current is not None and tracker.current != watcher._active_file:
+                watcher.set_active_file(tracker.current)
+            # Solo avisa si el tracker lo autoriza (no en pausa, no flip-flop, no la 1ra).
+            if to_announce is not None:
+                try:
+                    await app.bot.send_message(
+                        chat_id=ALLOWED_USER_ID,
+                        text=f"ℹ️ Cambie el seguimiento, Sir Rich. Ahora sigo: `{to_announce.parent.name}`",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not notify session switch: {e}")
         except Exception as e:
             logger.exception(f"Error in _watch_active_session: {e}")
         await asyncio.sleep(5)
