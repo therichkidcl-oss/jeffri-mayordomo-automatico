@@ -53,6 +53,15 @@ class VoiceLoop:
         if resp.speech:
             self.speak(resp.speech)
 
+        if resp.switch_project:
+            try:
+                async with self.send_lock:
+                    await self.controller.switch_session(resp.switch_project)
+            except Exception as e:
+                logger.exception("error cambiando de proyecto")
+                self.speak(f"No pude cambiar de proyecto, Sir Rich: {e}")
+            return
+
         if resp.dispatch_prompt:
             try:
                 async with self.send_lock:

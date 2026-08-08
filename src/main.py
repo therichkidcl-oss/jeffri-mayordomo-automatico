@@ -87,10 +87,18 @@ async def run_voice() -> None:
         from src.voice.search import web_search
         from src.voice.tts import PiperTTS
 
+        from src.session_detector import list_projects
+
+        def projects_provider():
+            try:
+                return [p.display_name for p in list_projects(CLAUDE_PROJECTS_DIR)]
+            except Exception:
+                return []
+
         voice_path = os.path.join("voice_models", f"{PIPER_VOICE}.onnx")
         tts = PiperTTS(voice_path)
         client = DeepSeekClient(DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL)
-        brain = Brain(client, search_fn=web_search)
+        brain = Brain(client, search_fn=web_search, projects_provider=projects_provider)
 
         loop = VoiceLoop(
             transcriber=transcribe_bytes,

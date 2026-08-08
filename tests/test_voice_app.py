@@ -21,9 +21,13 @@ class FakeBrain:
 class FakeController:
     def __init__(self):
         self.sent = []
+        self.switched = []
 
     async def send(self, text):
         self.sent.append(text)
+
+    async def switch_session(self, title):
+        self.switched.append(title)
 
 
 def _loop(brain, controller, get_claude_response=None, record=b"AUDIO", transcript="hola"):
@@ -85,3 +89,13 @@ def test_no_audio_skips():
     asyncio.run(vl.process_turn())
     assert spoken == []
     assert brain.turns == []
+
+
+def test_switch_project_calls_controller():
+    brain = FakeBrain(BrainResponse(speech="Cambiando a IA-HUB", switch_project="IA-HUB"))
+    ctrl = FakeController()
+    vl, spoken = _loop(brain, ctrl)
+    asyncio.run(vl.process_turn())
+    assert ctrl.switched == ["IA-HUB"]  # cambio de sesion
+    assert ctrl.sent == []               # no se mando prompt
+    assert "Cambiando a IA-HUB" in spoken

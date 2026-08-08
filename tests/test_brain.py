@@ -117,6 +117,30 @@ def test_confirmation_no_reconverses():
     assert b._pending_prompt is None
 
 
+# --- cambio de proyecto por voz ---
+
+def test_switch_project_tool():
+    client = FakeClient([
+        _tool_call("switch_project", {"project_name": "IA-HUB"}),
+    ])
+    b = Brain(client, search_fn=lambda q, max_results=5: [],
+              projects_provider=lambda: ["IA-HUB", "MiBot", "chatting-ia"])
+    r = _run(b.handle_user_turn("cambiate al proyecto ia hub"))
+    assert r.switch_project == "IA-HUB"
+    assert "IA-HUB" in r.speech
+    assert r.dispatch_prompt is None
+
+
+def test_projects_injected_in_system_prompt():
+    client = FakeClient([_content("ok")])
+    b = Brain(client, search_fn=lambda q, max_results=5: [],
+              projects_provider=lambda: ["IA-HUB", "MiBot"])
+    _run(b.handle_user_turn("hola"))
+    # el system prompt enviado debe mencionar los proyectos disponibles
+    sys_msg = client.calls[0]["messages"][0]["content"]
+    assert "IA-HUB" in sys_msg and "MiBot" in sys_msg
+
+
 # --- resumen de Claude ---
 
 def test_summarize_claude():

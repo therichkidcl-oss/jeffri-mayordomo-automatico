@@ -59,6 +59,18 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "switch_project",
+            "description": "Usa esto cuando Sir Rich quiere CAMBIAR de proyecto o sesion de Claude (ej. 'cambiate a IA-HUB', 'trabajemos en el bot de trading', 'abre el proyecto X'). Pasa el nombre del proyecto lo mas parecido a la lista de proyectos disponibles que ves en el system prompt.",
+            "parameters": {
+                "type": "object",
+                "properties": {"project_name": {"type": "string", "description": "Nombre del proyecto al que cambiar"}},
+                "required": ["project_name"],
+            },
+        },
+    },
 ]
 
 
@@ -85,17 +97,31 @@ def is_affirmative(text: str) -> bool:
 class BrainResponse:
     speech: str                      # lo que Jeffri dice por voz
     dispatch_prompt: str | None = None  # si no es None, mandar ESTO a Claude ahora
+    switch_project: str | None = None   # si no es None, cambiar a este proyecto/sesion
 
 
 class Brain:
     MAX_HISTORY = 20  # ventana rodante de turnos
 
-    def __init__(self, deepseek_client, search_fn):
+    def __init__(self, deepseek_client, search_fn, projects_provider=None):
         self.client = deepseek_client
         self.search = search_fn
+        self.projects_provider = projects_provider  # callable() -> list[str] de nombres
         self.history: list[dict] = []
         self.state = "idle"
         self._pending_prompt: str | None = None
+
+    def _system_prompt(self) -> str:
+        prompt = SYSTEM_PROMPT
+        if self.projects_provider is not None:
+            try:
+                projects = self.projects_provider() or []
+            except Exception:
+                projects = []
+            if projects:
+                lista = ", ".join(projects)
+                prompt += f"\n\nPROYECTOS DISPONIBLES (para switch_project): {lista}"
+        return prompt
 
     def _trim_history(self):
         if len(self.history) > self.MAX_HISTORY:
@@ -115,7 +141,7 @@ class Brain:
         return await self._run_tool_loop()
 
     async def _run_tool_loop(self, max_iters: int = 4) -> BrainResponse:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.history
+        messages = [{"role": "system", "content": self._system_prompt()}] + self.history
         for _ in range(max_iters):
             msg = await self.client.chat(messages, tools=TOOLS)
             tool_calls = msg.get("tool_calls")
@@ -138,6 +164,14 @@ class Brain:
                 self.state = "awaiting_confirmation"
                 return BrainResponse(
                     speech=f"Le propongo esto a Claude: {prompt}. ¿Se lo mando, Sir Rich?"
+                )
+
+            if name == "switch_project":
+                proj = (args.get("project_name") or "").strip()
+                self.state = "idle"
+                return BrainResponse(
+                    speech=f"Cambiando al proyecto {proj}, Sir Rich.",
+                    switch_project=proj,
                 )
 
             if name == "web_search":
