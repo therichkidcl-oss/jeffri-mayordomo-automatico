@@ -32,4 +32,5 @@ DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepse
 DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 VOICE_HOTKEY: str = os.environ.get("VOICE_HOTKEY", "f9")
 PIPER_VOICE: str = os.environ.get("PIPER_VOICE", "es_MX-ald-medium")
+PIPER_LENGTH_SCALE: float = float(os.environ.get("PIPER_LENGTH_SCALE", "1.15"))
 STT_MODEL_SIZE: str = os.environ.get("STT_MODEL_SIZE", "small")

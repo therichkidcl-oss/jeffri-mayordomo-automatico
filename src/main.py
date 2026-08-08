@@ -18,6 +18,7 @@ from src.config import (
     DEEPSEEK_API_KEY,
     DEEPSEEK_BASE_URL,
     DEEPSEEK_MODEL,
+    PIPER_LENGTH_SCALE,
     PIPER_VOICE,
     VOICE_ENABLED,
     VOICE_HOTKEY,
@@ -96,7 +97,7 @@ async def run_voice() -> None:
                 return []
 
         voice_path = os.path.join("voice_models", f"{PIPER_VOICE}.onnx")
-        tts = PiperTTS(voice_path)
+        tts = PiperTTS(voice_path, length_scale=PIPER_LENGTH_SCALE)
         client = DeepSeekClient(DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL)
         brain = Brain(client, search_fn=web_search, projects_provider=projects_provider)
 

@@ -11,22 +11,27 @@ logger = logging.getLogger(__name__)
 
 
 class PiperTTS:
-    def __init__(self, voice_path: str):
+    def __init__(self, voice_path: str, length_scale: float = 1.0):
         self.voice_path = voice_path
+        self.length_scale = length_scale  # >1.0 = mas lento/pausado (tono sabio)
         self._voice = None
 
     def _ensure_voice(self):
         if self._voice is None:
             from piper import PiperVoice
-            logger.info(f"Cargando voz Piper: {self.voice_path}")
+            logger.info(f"Cargando voz Piper: {self.voice_path} (length_scale={self.length_scale})")
             self._voice = PiperVoice.load(self.voice_path)
         return self._voice
 
     def synthesize_wav_bytes(self, text: str) -> bytes:
         voice = self._ensure_voice()
+        cfg = None
+        if self.length_scale != 1.0:
+            from piper import SynthesisConfig
+            cfg = SynthesisConfig(length_scale=self.length_scale)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
-            voice.synthesize_wav(text, w)
+            voice.synthesize_wav(text, w, syn_config=cfg)
         return buf.getvalue()
 
     def speak(self, text: str) -> None:

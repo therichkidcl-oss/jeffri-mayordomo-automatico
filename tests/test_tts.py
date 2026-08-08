@@ -13,7 +13,7 @@ def _fake_voice_synthesize(text, wav_file):
 
 
 class _FakeVoice:
-    def synthesize_wav(self, text, wav_file):
+    def synthesize_wav(self, text, wav_file, syn_config=None):
         _fake_voice_synthesize(text, wav_file)
 
 
