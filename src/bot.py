@@ -886,11 +886,12 @@ async def _forward_event_web_only(event: dict):
             })
 
 
-def main():
-    if not TELEGRAM_ENABLED:
-        asyncio.run(_run_web_only())
-        return
+def build_app() -> Application:
+    """Construye y configura el Application de Telegram (handlers + post_init).
 
+    Se extrae para poder reusarlo desde src/main.py (que corre Telegram + Voz
+    en el mismo proceso) sin duplicar el registro de handlers.
+    """
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
@@ -912,7 +913,15 @@ def main():
     # handler general para que ejecute el comando en vez de mandarla a Claude.
     app.add_handler(MessageHandler(filters.Text(set(KEYBOARD_ROUTES.keys())), on_keyboard_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))
+    return app
 
+
+def main():
+    if not TELEGRAM_ENABLED:
+        asyncio.run(_run_web_only())
+        return
+
+    app = build_app()
     logger.info("Bot iniciando...")
     app.run_polling()
 
