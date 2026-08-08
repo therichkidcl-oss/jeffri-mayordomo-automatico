@@ -33,6 +33,7 @@ from src.menu import KEYBOARD_ROUTES, bot_command_menu, main_reply_keyboard
 from src.security import is_destructive, requires_whitelist
 from src.session_detector import detect_active_session, list_projects, list_recent_sessions, list_sessions_in_folder
 from src.session_tracker import SessionTracker
+from src.stt import transcribe_bytes
 from src.transcript_watcher import TranscriptWatcher
 from src.web_server import create_app
 
@@ -686,10 +687,6 @@ async def _send_images_to_claude(update: Update, images: list[bytes], caption: s
 
 @requires_whitelist
 async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if state.groq is None:
-        await update.message.reply_text("⚠️ Groq deshabilitado, Sir Rich. No puedo transcribir audio.")
-        return
-
     media = update.message.voice or update.message.audio
     if media is None:
         return
@@ -704,16 +701,14 @@ async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ No pude descargar el audio: {e}")
         return
 
-    await update.message.reply_text("🎙 Transcribiendo con Whisper, Sir Rich...")
+    await update.message.reply_text("🎙 Transcribiendo (local, sin API), Sir Rich...")
     try:
-        filename = "voice.ogg" if update.message.voice else (media.file_name or "audio.ogg")
-        transcript = await state.groq.transcribe(audio_bytes, filename=filename)
-    except GroqAllKeysFailed as e:
-        await update.message.reply_text(f"❌ Whisper fallo: {e}")
-        return
+        # Transcripcion LOCAL con faster-whisper (sin Groq, sin tokens). av/ffmpeg
+        # decodifica el OGG/Opus de las notas de voz de Telegram directamente.
+        transcript = await asyncio.to_thread(transcribe_bytes, audio_bytes)
     except Exception as e:
-        logger.exception("Error en transcripcion")
-        await update.message.reply_text(f"❌ Error transcribiendo: {e}")
+        logger.exception("Error en transcripcion local")
+        await update.message.reply_text(f"❌ Error transcribiendo, Sir Rich: {e}")
         return
 
     if not transcript.strip():
