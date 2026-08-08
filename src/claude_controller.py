@@ -109,6 +109,9 @@ class ClaudeController:
     async def switch_session(self, title: str) -> None:
         await asyncio.to_thread(self._switch_session_sync, title)
 
+    async def list_sidebar_headers(self) -> list[str]:
+        return await asyncio.to_thread(self._list_sidebar_headers_sync)
+
     def _capture_sync(self) -> bytes:
         window = self.find_window()
         try:
@@ -245,6 +248,21 @@ class ClaudeController:
     async def dump_sidebar_items(self, max_items: int = 80) -> list[str]:
         return await asyncio.to_thread(self._dump_sidebar_items_sync, max_items)
 
+    def _list_sidebar_headers_sync(self) -> list[str]:
+        window = self.find_window()
+        rect = window.rectangle()
+        sidebar_w = min(320, rect.right - rect.left)
+        bbox = {
+            "left": rect.left,
+            "top": rect.top,
+            "width": sidebar_w,
+            "height": rect.bottom - rect.top,
+        }
+        with mss.mss() as sct:
+            shot = sct.grab(bbox)
+            png_bytes = mss.tools.to_png(shot.rgb, shot.size)
+        return _ocr_extract_all_lines(png_bytes)
+
     def _dump_sidebar_items_sync(self, max_items: int) -> list[str]:
         window = self.find_window()
         try:
@@ -263,6 +281,32 @@ class ClaudeController:
                 if len(out) >= max_items:
                     break
         return out
+
+
+def _ocr_extract_all_lines(png_bytes: bytes) -> list[str]:
+    try:
+        import winocr
+    except ImportError:
+        return []
+    img = Image.open(BytesIO(png_bytes))
+    try:
+        result = asyncio.run(winocr.recognize_pil(img, "es-ES"))
+    except Exception:
+        try:
+            result = asyncio.run(winocr.recognize_pil(img))
+        except Exception:
+            return []
+    out: list[str] = []
+    try:
+        for line in result.lines:
+            text = (line.text or "").strip()
+            if text and 3 < len(text) < 80:
+                normalized = " ".join(text.split())
+                if normalized not in out:
+                    out.append(normalized)
+    except Exception:
+        return out
+    return out
 
 
 def _click_at(x: int, y: int) -> None:
