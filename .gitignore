@@ -6,3 +6,6 @@ __pycache__/
 *.log
 sidebar_debug.png
 *_debug.png
+
+# Logs runtime
+logs/

@@ -37,9 +37,15 @@ from src.stt import transcribe_bytes
 from src.transcript_watcher import TranscriptWatcher
 from src.web_server import create_app
 
+import os as _os
+_os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("logs/jeffri.log", encoding="utf-8"),
+    ],
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram.ext").setLevel(logging.WARNING)
@@ -321,6 +327,11 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
     text = text.strip()
     if not text:
         return
+
+    logger.info(
+        f"texto ({source}): destructive={is_destructive(text)} "
+        f"groq={'si' if state.groq else 'no'} enhancer={'on' if state.enhancer_enabled else 'off'}"
+    )
 
     if is_destructive(text):
         token = uuid.uuid4().hex[:8]
