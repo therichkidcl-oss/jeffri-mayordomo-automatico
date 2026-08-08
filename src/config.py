@@ -20,6 +20,16 @@ CLAUDE_PROJECTS_DIR: Path = Path(_require("CLAUDE_PROJECTS_DIR"))
 _groq_keys_raw = os.environ.get("GROQ_API_KEYS", "")
 GROQ_API_KEYS: list[str] = [k.strip() for k in _groq_keys_raw.split(",") if k.strip()]
 
+WEB_ENABLED: bool = os.environ.get("WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 WEB_BIND: str = os.environ.get("WEB_BIND", "127.0.0.1")
 WEB_PORT: int = int(os.environ.get("WEB_PORT", "8000"))
 WEB_AUTH_TOKEN: str = os.environ.get("WEB_AUTH_TOKEN", "")
+
+# --- Jeffri Voz (interfaz de voz local) ---
+VOICE_ENABLED: bool = os.environ.get("VOICE_ENABLED", "false").lower() in ("true", "1", "yes")
+DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+VOICE_HOTKEY: str = os.environ.get("VOICE_HOTKEY", "f9")
+PIPER_VOICE: str = os.environ.get("PIPER_VOICE", "es_MX-ald-medium")
+STT_MODEL_SIZE: str = os.environ.get("STT_MODEL_SIZE", "small")

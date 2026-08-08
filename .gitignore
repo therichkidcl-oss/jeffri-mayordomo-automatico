@@ -9,3 +9,6 @@ sidebar_debug.png
 
 # Logs runtime
 logs/
+
+# Modelos de voz Piper (se descargan en setup)
+voice_models/
