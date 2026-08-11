@@ -133,13 +133,26 @@ async def amain() -> None:
         logger.info("Jeffri Voz deshabilitado (VOICE_ENABLED o DEEPSEEK_API_KEY faltan).")
 
     try:
-        await asyncio.Event().wait()  # corre para siempre
+        # Watchdog: si el polling de Telegram se cae (blip de red, error interno),
+        # reanudalo. Antes el proceso quedaba vivo por la voz pero Telegram muerto.
+        while True:
+            await asyncio.sleep(30)
+            try:
+                if not app.updater.running:
+                    logger.warning("Telegram polling caido; reanudando...")
+                    await app.updater.start_polling()
+                    logger.info("Telegram polling reanudado.")
+            except Exception:
+                logger.exception("no pude reanudar Telegram polling; reintento en 30s")
     finally:
         if voice_task is not None:
             voice_task.cancel()
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+        try:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
