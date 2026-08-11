@@ -731,8 +731,11 @@ async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _forward_event(app: Application, event: dict):
     if state.paused:
+        logger.info("Evento de Claude NO reenviado (bot en PAUSA /parar)")
         return
     messages = format_event(event)
+    if messages:
+        logger.info(f"Reenviando {len(messages)} mensaje(s) de Claude a Telegram")
     from src.ws_events import broadcaster
     import base64
     for msg in messages:
@@ -776,10 +779,14 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
     while True:
         try:
             active = detect_active_session(CLAUDE_PROJECTS_DIR)
+            # 1. SIEMPRE seguir la sesion activa detectada (para el REENVIO). Esto
+            #    es lo que estaba roto: antes solo seguia cuando el tracker
+            #    comprometia, y con flip-flop el watcher quedaba pegado.
+            if active is not None and active != watcher._active_file:
+                logger.info(f"Reenvio sigue ahora: {active.parent.name}")
+                watcher.set_active_file(active)
+            # 2. El tracker SOLO decide el AVISO (dedup anti-flip-flop + pausa).
             to_announce = tracker.observe(active, state.paused)
-            # Sigue el archivo que el tracker considera actual (cambio ya estable).
-            if tracker.current is not None and tracker.current != watcher._active_file:
-                watcher.set_active_file(tracker.current)
             # Solo avisa si el tracker lo autoriza (no en pausa, no flip-flop, no la 1ra).
             if to_announce is not None:
                 try:
