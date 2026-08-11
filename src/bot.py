@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 class BotState:
     def __init__(self) -> None:
         self.paused: bool = False
+        self.pinned_file = None  # si esta fijado, el watcher sigue SOLO esta sesion
         self.pending_destructive: dict[str, str] = {}
         self.pending_enhanced: dict[str, dict[str, str]] = {}
         self.pending_switch: dict[str, str] = {}
@@ -174,6 +175,31 @@ async def cmd_parar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_seguir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = False
     await update.message.reply_text("▶️ Reenvio reanudado, Sir Rich.")
+
+
+@requires_whitelist
+async def cmd_fijar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    active = detect_active_session(CLAUDE_PROJECTS_DIR)
+    if active is None:
+        await update.message.reply_text("No detecto sesion activa para fijar, Sir Rich.")
+        return
+    state.pinned_file = active
+    watcher = context.application.bot_data.get("watcher")
+    if watcher is not None:
+        watcher.set_active_file(active)
+    await update.message.reply_text(
+        f"📌 Fijado a `{active.parent.name}`, Sir Rich. Ahora Jeffri espeja SOLO esta sesion "
+        f"(ignora otras aunque esten activas). /auto para volver al seguimiento automatico.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+@requires_whitelist
+async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    state.pinned_file = None
+    await update.message.reply_text(
+        "🔄 Seguimiento automatico reanudado, Sir Rich. Jeffri sigue la sesion mas activa."
+    )
 
 
 @requires_whitelist
@@ -778,6 +804,14 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
     tracker.current = watcher._active_file
     while True:
         try:
+            # Si el usuario FIJO una sesion (/fijar), seguir SOLO esa: sin
+            # flip-flop entre sesiones activas, sin avisos de cambio.
+            if state.pinned_file is not None:
+                if watcher._active_file != state.pinned_file:
+                    watcher.set_active_file(state.pinned_file)
+                await asyncio.sleep(5)
+                continue
+
             active = detect_active_session(CLAUDE_PROJECTS_DIR)
             # 1. SIEMPRE seguir la sesion activa detectada (para el REENVIO). Esto
             #    es lo que estaba roto: antes solo seguia cuando el tracker
@@ -921,6 +955,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("proyectos", cmd_proyectos))
     app.add_handler(CommandHandler("parar", cmd_parar))
     app.add_handler(CommandHandler("seguir", cmd_seguir))
+    app.add_handler(CommandHandler("fijar", cmd_fijar))
+    app.add_handler(CommandHandler("auto", cmd_auto))
     app.add_handler(CommandHandler("captura", cmd_captura))
     app.add_handler(CommandHandler("debug_ui", cmd_debug_ui))
     app.add_handler(CommandHandler("stop", cmd_stop))

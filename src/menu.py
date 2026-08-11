@@ -21,6 +21,8 @@ COMMAND_MENU: list[tuple[str, str]] = [
     ("estado", "Estado del bot y del enhancer"),
     ("captura", "Screenshot de la ventana de Claude"),
     ("stop", "Interrumpe a Claude (envia ESC)"),
+    ("fijar", "Fija Jeffri a la sesion actual (no salta a otras)"),
+    ("auto", "Vuelve al seguimiento automatico de sesion"),
     ("enhancer", "Activa o desactiva el pulidor Groq"),
     ("parar", "Pausa el reenvio hacia Telegram"),
     ("seguir", "Reanuda el reenvio"),
