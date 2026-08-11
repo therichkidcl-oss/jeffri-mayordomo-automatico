@@ -118,14 +118,27 @@ async def run_voice() -> None:
         logger.exception("Jeffri Voz fallo al arrancar; Telegram sigue funcionando")
 
 
-async def amain() -> None:
-    app = build_app()
+async def _startup(app) -> None:
+    """Arranque manual del Application. CRITICO: el ciclo manual de PTB
+    (initialize/start/start_polling) NO llama post_init — solo lo hacen
+    run_polling/run_webhook (ver docstring de Application.initialize). Sin esta
+    llamada explicita, el TranscriptWatcher nunca arranca y Jeffri deja de
+    reenviar las respuestas de Claude a Telegram. Orden = el de run_polling:
+    initialize -> post_init -> start -> polling.
+    """
     await app.initialize()
+    if app.post_init:
+        await app.post_init(app)
     await app.start()
     # timeout=1 (short-poll): conexiones cortas que sobreviven Proton VPN. Con
     # long-poll (timeout alto) la VPN corta la conexion (httpx.ReadError).
     await app.updater.start_polling(timeout=1, drop_pending_updates=True)
     logger.info("Telegram polling iniciado (short-poll para VPN).")
+
+
+async def amain() -> None:
+    app = build_app()
+    await _startup(app)
 
     voice_task = None
     if VOICE_ENABLED and DEEPSEEK_API_KEY:
