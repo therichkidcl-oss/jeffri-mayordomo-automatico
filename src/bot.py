@@ -897,8 +897,8 @@ def build_app() -> Application:
     from telegram.request import HTTPXRequest
     _req = HTTPXRequest(connection_pool_size=8, connect_timeout=30.0,
                         read_timeout=30.0, write_timeout=30.0, pool_timeout=30.0)
-    _get_req = HTTPXRequest(connection_pool_size=4, connect_timeout=30.0,
-                            read_timeout=40.0, write_timeout=30.0, pool_timeout=30.0)
+    _get_req = HTTPXRequest(connection_pool_size=4, connect_timeout=20.0,
+                            read_timeout=15.0, write_timeout=20.0, pool_timeout=20.0)
     app = (
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)

@@ -122,8 +122,10 @@ async def amain() -> None:
     app = build_app()
     await app.initialize()
     await app.start()
-    await app.updater.start_polling(timeout=20, drop_pending_updates=True)
-    logger.info("Telegram polling iniciado.")
+    # timeout=1 (short-poll): conexiones cortas que sobreviven Proton VPN. Con
+    # long-poll (timeout alto) la VPN corta la conexion (httpx.ReadError).
+    await app.updater.start_polling(timeout=1, drop_pending_updates=True)
+    logger.info("Telegram polling iniciado (short-poll para VPN).")
 
     voice_task = None
     if VOICE_ENABLED and DEEPSEEK_API_KEY:
@@ -140,7 +142,7 @@ async def amain() -> None:
             try:
                 if not app.updater.running:
                     logger.warning("Telegram polling caido; reanudando...")
-                    await app.updater.start_polling(timeout=20, drop_pending_updates=True)
+                    await app.updater.start_polling(timeout=1)
                     logger.info("Telegram polling reanudado.")
             except Exception:
                 logger.exception("no pude reanudar Telegram polling; reintento en 30s")
