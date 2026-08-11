@@ -169,3 +169,51 @@ async def test_watcher_switches_active_file(tmp_path):
     assert "a" in sources
     assert "b" in sources
     assert "a-after-switch" not in sources
+
+
+@pytest.mark.asyncio
+async def test_watcher_no_pierde_eventos_al_volver(tmp_path):
+    """Regresion flip-flop: si se escribe en A mientras el watcher mira B, al
+    VOLVER a A esos eventos NO se pierden. Antes set_active_file saltaba al final
+    (seek-to-end) y descartaba lo escrito antes del cambio -> Jeffri se comia
+    respuestas de Claude cuando habia 2 sesiones activas alternandose."""
+    file_a = tmp_path / "a.jsonl"
+    file_b = tmp_path / "b.jsonl"
+    file_a.write_text("")
+    file_b.write_text("")
+
+    received: list[dict] = []
+
+    async def on_event(event: dict):
+        received.append(event)
+
+    watcher = TranscriptWatcher(tmp_path, on_event)
+    watcher.start()
+    watcher.set_active_file(file_a)
+    await asyncio.sleep(0.2)
+
+    # evento a1 mientras miramos A
+    with open(file_a, "a", encoding="utf-8") as f:
+        f.write('{"src": "a1"}\n')
+        f.flush()
+    await asyncio.sleep(0.4)
+
+    # cambiar a B y, MIENTRAS estamos en B, escribir a2 en A
+    watcher.set_active_file(file_b)
+    with open(file_a, "a", encoding="utf-8") as f:
+        f.write('{"src": "a2-escrito-en-b"}\n')
+        f.flush()
+    await asyncio.sleep(0.3)
+
+    # VOLVER a A: a2 debe reenviarse (no perderse por seek-to-end)
+    watcher.set_active_file(file_a)
+    with open(file_a, "a", encoding="utf-8") as f:
+        f.write('{"src": "a3"}\n')
+        f.flush()
+    await asyncio.sleep(1.0)
+    watcher.stop()
+
+    sources = [e["src"] for e in received]
+    assert "a1" in sources
+    assert "a2-escrito-en-b" in sources  # lo critico: NO se pierde al volver
+    assert "a3" in sources

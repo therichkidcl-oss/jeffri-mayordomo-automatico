@@ -36,6 +36,9 @@ class TranscriptWatcher:
         self._observer: Observer | None = None
         self._active_file: Path | None = None
         self._last_offset: int = 0
+        # Offset por archivo: al volver a una sesion se REANUDA donde quedamos
+        # (no seek-to-end) para no perder eventos escritos mientras miraba otra.
+        self._offsets: dict[str, int] = {}
         self.loop: asyncio.AbstractEventLoop | None = None
         self._read_lock: asyncio.Lock | None = None
         self._seen_event_ids: set[str] = set()
@@ -59,17 +62,39 @@ class TranscriptWatcher:
     def set_active_file(self, path: Path) -> None:
         if self._active_file == path:
             return
+        # Guarda donde quedamos en el archivo que dejamos.
+        if self._active_file is not None:
+            self._offsets[str(self._active_file)] = self._last_offset
         self._active_file = path
-        try:
-            self._last_offset = path.stat().st_size
-        except OSError:
-            self._last_offset = 0
-        self._seen_event_ids.clear()
+        key = str(path)
+        if key in self._offsets:
+            # Ya visto: REANUDAR (no perder lo escrito mientras mirabamos otra).
+            self._last_offset = self._offsets[key]
+        else:
+            # Primera vez: arrancar desde el final (no volcar el historial).
+            try:
+                self._last_offset = path.stat().st_size
+            except OSError:
+                self._last_offset = 0
+            self._offsets[key] = self._last_offset
+        # OJO: NO limpiar _seen_event_ids — el dedup global (por uuid) debe
+        # persistir entre cambios; el offset ya evita releer lo viejo.
         logger.info(f"Now watching: {path}")
+
+    async def catch_up(self) -> None:
+        """Lee y reenvia lo pendiente del archivo activo (desde _last_offset).
+        Se llama justo despues de cambiar de sesion para no esperar al proximo
+        write y reenviar de inmediato lo que se escribio mientras mirabamos otra.
+        """
+        if self._active_file is not None:
+            await self._read_new(self._active_file)
 
     async def _on_file_modified(self, path: Path) -> None:
         if self._active_file is None or path != self._active_file:
             return
+        await self._read_new(path)
+
+    async def _read_new(self, path: Path) -> None:
         if self._read_lock is None:
             return
         async with self._read_lock:
@@ -106,6 +131,7 @@ class TranscriptWatcher:
                     events_to_emit.append(event)
 
                 self._last_offset = new_offset
+                self._offsets[str(path)] = new_offset
 
                 for event in events_to_emit:
                     await self.on_event(event)

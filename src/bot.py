@@ -809,16 +809,18 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
             if state.pinned_file is not None:
                 if watcher._active_file != state.pinned_file:
                     watcher.set_active_file(state.pinned_file)
+                    await watcher.catch_up()
                 await asyncio.sleep(5)
                 continue
 
             active = detect_active_session(CLAUDE_PROJECTS_DIR)
-            # 1. SIEMPRE seguir la sesion activa detectada (para el REENVIO). Esto
-            #    es lo que estaba roto: antes solo seguia cuando el tracker
-            #    comprometia, y con flip-flop el watcher quedaba pegado.
+            # 1. SIEMPRE seguir la sesion activa detectada (para el REENVIO). Al
+            #    cambiar, catch_up() reenvia de inmediato lo pendiente y el offset
+            #    por archivo evita perder lo escrito mientras mirabamos otra.
             if active is not None and active != watcher._active_file:
                 logger.info(f"Reenvio sigue ahora: {active.parent.name}")
                 watcher.set_active_file(active)
+                await watcher.catch_up()
             # 2. El tracker SOLO decide el AVISO (dedup anti-flip-flop + pausa).
             to_announce = tracker.observe(active, state.paused)
             # Solo avisa si el tracker lo autoriza (no en pausa, no flip-flop, no la 1ra).
