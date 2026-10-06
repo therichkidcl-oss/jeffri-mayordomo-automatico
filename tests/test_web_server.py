@@ -7,7 +7,7 @@ from src.web_server import create_app
 class _FakeState:
     paused = False
     enhancer_enabled = True
-    groq = object()
+    enhancer = object()
 
 
 def test_create_app_state_endpoint():
@@ -18,7 +18,7 @@ def test_create_app_state_endpoint():
     assert r.json() == {
         "paused": False,
         "enhancer_enabled": True,
-        "groq_available": True,
+        "enhancer_available": True,
     }
 
 
@@ -30,16 +30,16 @@ def test_create_app_root_returns_placeholder_when_no_index():
     assert "Batcave" in r.text
 
 
-def test_create_app_state_endpoint_no_groq():
+def test_create_app_state_endpoint_no_enhancer():
     class S:
         paused = True
         enhancer_enabled = False
-        groq = None
+        enhancer = None
     app = create_app(S())
     client = TestClient(app)
     r = client.get("/api/state")
     assert r.json() == {
         "paused": True,
         "enhancer_enabled": False,
-        "groq_available": False,
+        "enhancer_available": False,
     }

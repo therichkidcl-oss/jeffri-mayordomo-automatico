@@ -20,22 +20,29 @@ from src.claude_controller import ClaudeController, ClaudeControllerError, Claud
 from src.config import (
     ALLOWED_USER_ID,
     CLAUDE_PROJECTS_DIR,
-    GROQ_API_KEYS,
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_MODEL,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_ENABLED,
     WEB_BIND,
     WEB_ENABLED,
     WEB_PORT,
 )
+from src.enhancer import EnhancerError, PromptEnhancer
 from src.formatters import PhotoMessage, TextMessage, format_event
-from src.groq_client import GroqAllKeysFailed, GroqClient, GroqError
 from src.menu import KEYBOARD_ROUTES, bot_command_menu, main_reply_keyboard
 from src.security import is_destructive, requires_whitelist
 from src.session_detector import detect_active_session, list_projects, list_recent_sessions, list_sessions_in_folder
 from src.session_tracker import SessionTracker
 from src.stt import transcribe_bytes
 from src.transcript_watcher import TranscriptWatcher
+from src.user_settings import load_title, save_title, clear_title
 from src.web_server import create_app
+
+# Fallback vocativo mientras el usuario no eligio su titulo honorifico (ver /start).
+# Jeffri es un mayordomo sumiso — nunca se dirige con falta de ceremonia.
+DEFAULT_ADDRESS = "mi senor"
 
 import os as _os
 _os.makedirs("logs", exist_ok=True)
@@ -67,11 +74,33 @@ class BotState:
         self.album_buffers: dict[str, dict] = {}
         self.controller = ClaudeController()
         self.send_lock = asyncio.Lock()
-        self.groq: GroqClient | None = GroqClient(GROQ_API_KEYS) if GROQ_API_KEYS else None
-        if self.groq is None:
-            logger.warning("GROQ_API_KEYS vacio: enhancer y transcripcion deshabilitados")
+        self.enhancer: PromptEnhancer | None = (
+            PromptEnhancer(DEEPSEEK_API_KEY, model=DEEPSEEK_MODEL, base_url=DEEPSEEK_BASE_URL)
+            if DEEPSEEK_API_KEY
+            else None
+        )
+        if self.enhancer is None:
+            logger.warning("DEEPSEEK_API_KEY vacia: enhancer deshabilitado")
         else:
-            logger.info(f"Groq habilitado con {len(GROQ_API_KEYS)} keys")
+            logger.info(f"DeepSeek habilitado (model={DEEPSEEK_MODEL})")
+
+        # Titulo honorifico. None = aun no configurado (Jeffri lo pregunta en /start).
+        self.user_title: str | None = load_title()
+        # Cuando esta True, el proximo mensaje de texto no-comando se interpreta
+        # como la respuesta al "¿como desea que me dirija a usted?".
+        self.awaiting_title: bool = False
+        if self.user_title:
+            logger.info(f"Titulo del usuario cargado: {self.user_title!r}")
+        else:
+            logger.info("Sin titulo guardado — Jeffri lo preguntara en /start")
+
+    def address(self) -> str:
+        """Devuelve el vocativo para dirigirse al usuario.
+
+        Usa el titulo que el usuario eligio o, mientras no haya elegido,
+        'mi senor' como fallback sumiso de mayordomo.
+        """
+        return self.user_title or DEFAULT_ADDRESS
 
     def claim_token(self, token: str) -> bool:
         """Devuelve False si ya esta procesado, True si es nuevo (y lo marca)."""
@@ -89,12 +118,28 @@ state = BotState()
 
 @requires_whitelist
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Primera vez: Jeffri aun no sabe como dirigirse al usuario. Pregunta en tono
+    # sumiso de mayordomo y pone el flag para capturar la respuesta.
+    if state.user_title is None:
+        state.awaiting_title = True
+        await update.message.reply_text(
+            "🎩 *A su servicio.*\n\n"
+            "Soy Jeffri, su mayordomo. Antes de ponerme a su disposicion, permitame "
+            "una pregunta: ¿como desea que me dirija a usted?\n\n"
+            "_Puede responder con el titulo que prefiera_ — por ejemplo "
+            "`Sir Smith`, `Doña Maria`, `Jefa`, `Doctor`, `Capitan`, o cualquier "
+            "forma que sea de su agrado. Lo recordare en adelante.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     active = detect_active_session(CLAUDE_PROJECTS_DIR)
+    addr = state.address()
     if active:
-        msg = f"👋 Hola Sir Rich. Sesion activa: `{active.parent.name}`"
+        msg = f"🎩 A sus ordenes, {addr}. Sesion activa: `{active.parent.name}`"
     else:
-        msg = "👋 Hola Sir Rich. No detecte ninguna sesion activa. Abre Claude Desktop."
-    msg += "\n\nUsa el boton *Menu* o los botones de abajo para elegir comandos."
+        msg = f"🎩 A sus ordenes, {addr}. No detecte ninguna sesion activa. Abra Claude Desktop cuando guste."
+    msg += "\n\nPuede usar el boton *Menu* o los botones de abajo para elegir un comando."
     await update.message.reply_text(
         msg,
         parse_mode=ParseMode.MARKDOWN,
@@ -103,19 +148,61 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @requires_whitelist
+async def cmd_titulo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cambia o resetea el titulo honorifico guardado.
+
+    - `/titulo` sin args: muestra el actual + explica como cambiarlo.
+    - `/titulo <nuevo>`: lo setea de inmediato.
+    - `/titulo reset`: lo borra y vuelve a preguntar.
+    """
+    args = context.args or []
+    if not args:
+        current = state.user_title or "(ninguno — Jeffri usa fallback)"
+        await update.message.reply_text(
+            f"🎩 Titulo actual: *{current}*\n\n"
+            f"Para cambiarlo: `/titulo Nuevo Titulo`\n"
+            f"Para que vuelva a preguntarselo: `/titulo reset`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if args[0].lower() == "reset":
+        clear_title()
+        state.user_title = None
+        state.awaiting_title = True
+        await update.message.reply_text(
+            "🎩 Como guste. ¿Como desea que me dirija a usted de ahora en adelante?",
+        )
+        return
+
+    new_title = " ".join(args).strip()
+    try:
+        save_title(new_title)
+    except ValueError as e:
+        await update.message.reply_text(f"⚠️ {e}")
+        return
+    state.user_title = new_title
+    state.awaiting_title = False
+    await update.message.reply_text(
+        f"🎩 Entendido. En adelante le llamare *{new_title}*. A su servicio.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+@requires_whitelist
 async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active = detect_active_session(CLAUDE_PROJECTS_DIR)
     paused = "⏸️ pausado" if state.paused else "▶️ activo"
-    if state.groq is None:
-        groq_state = "🤖 Groq deshabilitado (sin keys)"
+    if state.enhancer is None:
+        enhancer_state = "🤖 DeepSeek deshabilitado (sin API key)"
     elif state.enhancer_enabled:
-        groq_state = "🤖 Enhancer ON (texto pasa por Groq)"
+        enhancer_state = "🤖 Enhancer ON (texto pasa por DeepSeek)"
     else:
-        groq_state = "🤖 Enhancer OFF (texto va directo a Claude)"
+        enhancer_state = "🤖 Enhancer OFF (texto va directo a Claude)"
     msg = (
         f"Estado: {paused}\n"
         f"Sesion: `{active.parent.name if active else '(ninguna)'}`\n"
-        f"{groq_state}"
+        f"{enhancer_state}"
     )
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
@@ -124,7 +211,7 @@ async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_sesiones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sessions = list_recent_sessions(CLAUDE_PROJECTS_DIR, limit=10)
     if not sessions:
-        await update.message.reply_text("No hay sesiones recientes, Sir Rich.")
+        await update.message.reply_text(f"No hay sesiones recientes, {state.address()}.")
         return
 
     buttons = []
@@ -137,7 +224,7 @@ async def cmd_sesiones(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons.append([InlineKeyboardButton(label, callback_data=f"switch:go:{token}")])
 
     await update.message.reply_text(
-        "📋 *Sesiones recientes, Sir Rich:*\nToque una para cambiar.",
+        f"📋 *Sesiones recientes, {state.address()}:*\nToque una para cambiar.",
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -147,7 +234,7 @@ async def cmd_sesiones(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_proyectos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     projects = list_projects(CLAUDE_PROJECTS_DIR)
     if not projects:
-        await update.message.reply_text("No hay proyectos detectados, Sir Rich.")
+        await update.message.reply_text(f"No hay proyectos detectados, {state.address()}.")
         return
 
     buttons = []
@@ -159,7 +246,7 @@ async def cmd_proyectos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons.append([InlineKeyboardButton(label, callback_data=f"proj:open:{token}")])
 
     await update.message.reply_text(
-        "🗂 *Proyectos, Sir Rich:*\nToque uno para ver sus sesiones.",
+        f"🗂 *Proyectos, {state.address()}:*\nToque uno para ver sus sesiones.",
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -168,27 +255,27 @@ async def cmd_proyectos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @requires_whitelist
 async def cmd_parar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = True
-    await update.message.reply_text("⏸️ Reenvio pausado, Sir Rich. /seguir para reanudar.")
+    await update.message.reply_text(f"⏸️ Reenvio pausado, {state.address()}. /seguir para reanudar.")
 
 
 @requires_whitelist
 async def cmd_seguir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.paused = False
-    await update.message.reply_text("▶️ Reenvio reanudado, Sir Rich.")
+    await update.message.reply_text(f"▶️ Reenvio reanudado, {state.address()}.")
 
 
 @requires_whitelist
 async def cmd_fijar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active = detect_active_session(CLAUDE_PROJECTS_DIR)
     if active is None:
-        await update.message.reply_text("No detecto sesion activa para fijar, Sir Rich.")
+        await update.message.reply_text(f"No detecto sesion activa para fijar, {state.address()}.")
         return
     state.pinned_file = active
     watcher = context.application.bot_data.get("watcher")
     if watcher is not None:
         watcher.set_active_file(active)
     await update.message.reply_text(
-        f"📌 Fijado a `{active.parent.name}`, Sir Rich. Ahora Jeffri espeja SOLO esta sesion "
+        f"📌 Fijado a `{active.parent.name}`, {state.address()}. Ahora Jeffri espeja SOLO esta sesion "
         f"(ignora otras aunque esten activas). /auto para volver al seguimiento automatico.",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -198,7 +285,7 @@ async def cmd_fijar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.pinned_file = None
     await update.message.reply_text(
-        "🔄 Seguimiento automatico reanudado, Sir Rich. Jeffri sigue la sesion mas activa."
+        f"🔄 Seguimiento automatico reanudado, {state.address()}. Jeffri sigue la sesion mas activa."
     )
 
 
@@ -212,12 +299,12 @@ async def cmd_enhancer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif arg in ("off", "desactivar", "no"):
             state.enhancer_enabled = False
         else:
-            await update.message.reply_text("Usa `/enhancer on` o `/enhancer off`, Sir Rich.")
+            await update.message.reply_text(f"Usa `/enhancer on` o `/enhancer off`, {state.address()}.")
             return
     else:
         state.enhancer_enabled = not state.enhancer_enabled
     estado = "ON ✨" if state.enhancer_enabled else "OFF (texto va directo)"
-    await update.message.reply_text(f"Enhancer: *{estado}*, Sir Rich.", parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(f"Enhancer: *{estado}*, {state.address()}.", parse_mode=ParseMode.MARKDOWN)
 
 
 @requires_whitelist
@@ -225,12 +312,12 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         async with state.send_lock:
             await state.controller.interrupt()
-        await update.message.reply_text("⏹ ESC enviado, Sir Rich. Claude interrumpido.")
+        await update.message.reply_text(f"⏹ ESC enviado, {state.address()}. Claude interrumpido.")
     except (ClaudeNotOpenError, PCLockedError) as e:
         await update.message.reply_text(f"❌ {e}")
     except Exception as e:
         logger.exception("Error en /stop")
-        await update.message.reply_text(f"❌ Error inesperado, Sir Rich: {e}")
+        await update.message.reply_text(f"❌ Error inesperado, {state.address()}: {e}")
 
 
 @requires_whitelist
@@ -245,7 +332,7 @@ async def cmd_debug_ui(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ {e}")
         return
     if not items:
-        await update.message.reply_text("⚠️ No detecte items con nombre visible, Sir Rich.")
+        await update.message.reply_text(f"⚠️ No detecte items con nombre visible, {state.address()}.")
         return
     chunks = []
     current = "🔬 *UIA dump (primeros items con nombre):*\n```"
@@ -272,15 +359,15 @@ async def cmd_captura(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     except Exception as e:
         logger.exception("Error capturando pantalla")
-        await update.message.reply_text(f"❌ Error inesperado, Sir Rich: {e}")
+        await update.message.reply_text(f"❌ Error inesperado, {state.address()}: {e}")
         return
-    await update.message.reply_photo(photo=png_bytes, caption="📸 Ventana de Claude, Sir Rich")
+    await update.message.reply_photo(photo=png_bytes, caption=f"📸 Ventana de Claude, {state.address()}")
 
 
 @requires_whitelist
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "🤖 *TelegramClaudeBridge — a la orden, Sir Rich*\n\n"
+        f"🤖 *TelegramClaudeBridge — a la orden, {state.address()}*\n\n"
         "*Comandos:*\n"
         "/start - bienvenida + sesion activa\n"
         "/estado - estado del bot\n"
@@ -288,13 +375,14 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sesiones - lista plana de ultimas 10 sesiones\n"
         "/captura - screenshot de la ventana de Claude\n"
         "/stop - interrumpe a Claude (envia ESC)\n"
-        "/enhancer on|off - activa o desactiva el pulidor Groq\n"
+        "/enhancer on|off - activa o desactiva el pulidor DeepSeek\n"
+        "/titulo [nuevo] - ve o cambia como Jeffri se dirige a ti\n"
         "/parar - pausa el reenvio hacia Telegram\n"
         "/seguir - reanuda el reenvio\n"
         "/ayuda - este mensaje\n\n"
         "*Entradas:*\n"
-        "• Texto → mejorado por Groq → confirmas → Claude\n"
-        "• Voz/audio → transcrito por Whisper → mejorado → confirmas → Claude\n"
+        "• Texto → mejorado por DeepSeek → confirmas → Claude\n"
+        "• Voz/audio → transcrito local (Whisper) → mejorado por DeepSeek → confirmas → Claude\n"
         "• Foto → pegada en Claude (con caption si lo pones)\n"
         "• Texto destructivo → confirmacion Si/No\n\n"
         "💡 Toca el boton *Menu* (abajo-izquierda) o los botones fijos de abajo "
@@ -346,7 +434,41 @@ def _enhanced_keyboard(token: str) -> InlineKeyboardMarkup:
 
 @requires_whitelist
 async def on_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _process_user_text(update, update.message.text, source="texto")
+    text = (update.message.text or "").strip()
+
+    # Primera pregunta de Jeffri: si estamos esperando el titulo del usuario,
+    # este texto ES la respuesta. Lo guardamos y confirmamos — nunca llega a Claude.
+    if state.awaiting_title and text and not text.startswith("/"):
+        try:
+            save_title(text)
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ Ese titulo no me parece valido. Pruebe con unas palabras, por favor."
+            )
+            return
+        state.user_title = text
+        state.awaiting_title = False
+        await update.message.reply_text(
+            f"🎩 Es un honor servirle, *{text}*. En adelante asi me dirigire a usted.\n\n"
+            f"Puede ver el estado con /estado o la lista de comandos con /ayuda.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_reply_keyboard(),
+        )
+        return
+
+    # Antes de atender cualquier otra cosa, Jeffri necesita saber como llamarle.
+    if state.user_title is None:
+        state.awaiting_title = True
+        await update.message.reply_text(
+            "🎩 Mil disculpas, pero antes de ponerme a su disposicion necesito "
+            "saber como desea que me dirija a usted. "
+            "Puede responder con el titulo que prefiera (por ejemplo `Sir Smith`, "
+            "`Doña Maria`, `Jefa`, `Doctor`...). Lo recordare siempre.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    await _process_user_text(update, text, source="texto")
 
 
 async def _process_user_text(update: Update, text: str, source: str = "texto"):
@@ -356,34 +478,29 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
 
     logger.info(
         f"texto ({source}): destructive={is_destructive(text)} "
-        f"groq={'si' if state.groq else 'no'} enhancer={'on' if state.enhancer_enabled else 'off'}"
+        f"deepseek={'si' if state.enhancer else 'no'} enhancer={'on' if state.enhancer_enabled else 'off'}"
     )
 
     if is_destructive(text):
         token = uuid.uuid4().hex[:8]
         state.pending_destructive[token] = text
         await update.message.reply_text(
-            f"⚠️ Detecte palabras destructivas (deploy/borrar/etc), Sir Rich.\n\n"
+            f"⚠️ Detecte palabras destructivas (deploy/borrar/etc), {state.address()}.\n\n"
             f"Mensaje: _{text[:300]}_\n\n¿Confirma?",
             reply_markup=_destructive_keyboard(token),
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    if state.groq is None or not state.enhancer_enabled:
+    if state.enhancer is None or not state.enhancer_enabled:
         await _send_to_claude(update, text)
         return
 
     try:
-        enhanced = await state.groq.enhance_prompt(text, source=source)
-    except GroqAllKeysFailed as e:
-        logger.warning(f"Groq enhance fallo, mandando original: {e}")
-        await update.message.reply_text("⚠️ Groq no respondio, mando original sin mejorar.")
-        await _send_to_claude(update, text)
-        return
-    except GroqError as e:
-        logger.exception("Groq error inesperado")
-        await update.message.reply_text(f"⚠️ Groq error: {e}. Mando original.")
+        enhanced = await state.enhancer.enhance(text, source=source, user_title=state.address())
+    except EnhancerError as e:
+        logger.warning(f"DeepSeek enhance fallo, mandando original: {e}")
+        await update.message.reply_text("⚠️ DeepSeek no respondio, mando original sin mejorar.")
         await _send_to_claude(update, text)
         return
 
@@ -395,8 +512,8 @@ async def _process_user_text(update: Update, text: str, source: str = "texto"):
     state.pending_enhanced[token] = {"original": text, "enhanced": enhanced}
     label = "📝" if source == "texto" else ("🎙" if source == "voz" else "🖼")
     await update.message.reply_text(
-        f"{label} *Original, Sir Rich*:\n_{text[:600]}_\n\n"
-        f"✨ *Mejorado por Groq*:\n_{enhanced[:600]}_",
+        f"{label} *Original, {state.address()}*:\n_{text[:600]}_\n\n"
+        f"✨ *Mejorado por DeepSeek*:\n_{enhanced[:600]}_",
         reply_markup=_enhanced_keyboard(token),
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -412,14 +529,14 @@ async def _send_to_claude(update_or_query, text: str):
         async with state.send_lock:
             await state.controller.send(text)
         if reply:
-            await reply("✉️ Enviado, Sir Rich.")
+            await reply(f"✉️ Enviado, {state.address()}.")
     except (ClaudeNotOpenError, PCLockedError) as e:
         if reply:
             await reply(f"❌ {e}")
     except Exception as e:
         logger.exception("Error enviando a Claude")
         if reply:
-            await reply(f"❌ Error inesperado, Sir Rich: {e}")
+            await reply(f"❌ Error inesperado, {state.address()}: {e}")
 
 
 @requires_whitelist
@@ -449,16 +566,16 @@ async def _handle_destructive_callback(query, decision: str, token: str):
         return
     text = state.pending_destructive.pop(token, None)
     if not text:
-        await query.edit_message_text("⚠️ Confirmacion expirada, Sir Rich.")
+        await query.edit_message_text(f"⚠️ Confirmacion expirada, {state.address()}.")
         return
     if decision == "yes":
         await query.edit_message_text(
-            f"✅ Confirmado, Sir Rich. Enviando...\n_{text[:300]}_",
+            f"✅ Confirmado, {state.address()}. Enviando...\n_{text[:300]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
         await _do_send(query, text)
     else:
-        await query.edit_message_text("❌ Cancelado, Sir Rich.")
+        await query.edit_message_text(f"❌ Cancelado, {state.address()}.")
 
 
 async def _handle_enhanced_callback(query, decision: str, token: str):
@@ -467,24 +584,24 @@ async def _handle_enhanced_callback(query, decision: str, token: str):
         return
     payload = state.pending_enhanced.pop(token, None)
     if not payload:
-        await query.edit_message_text("⚠️ Confirmacion expirada, Sir Rich.")
+        await query.edit_message_text(f"⚠️ Confirmacion expirada, {state.address()}.")
         return
     if decision == "send":
         text = payload["enhanced"]
         await query.edit_message_text(
-            f"✅ Enviando version mejorada, Sir Rich...\n_{text[:300]}_",
+            f"✅ Enviando version mejorada, {state.address()}...\n_{text[:300]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
         await _do_send(query, text)
     elif decision == "orig":
         text = payload["original"]
         await query.edit_message_text(
-            f"📤 Enviando original, Sir Rich...\n_{text[:300]}_",
+            f"📤 Enviando original, {state.address()}...\n_{text[:300]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
         await _do_send(query, text)
     else:
-        await query.edit_message_text("❌ Cancelado, Sir Rich.")
+        await query.edit_message_text(f"❌ Cancelado, {state.address()}.")
 
 
 async def _handle_image_callback(query, decision: str, token: str):
@@ -493,18 +610,18 @@ async def _handle_image_callback(query, decision: str, token: str):
         return
     payload = state.pending_image.pop(token, None)
     if not payload:
-        await query.edit_message_text("⚠️ Esa imagen expiro, Sir Rich.")
+        await query.edit_message_text(f"⚠️ Esa imagen expiro, {state.address()}.")
         return
     images = payload["images"]
     if decision == "cancel":
-        await query.edit_message_text("❌ Cancelado, Sir Rich. No envie las imagenes.")
+        await query.edit_message_text(f"❌ Cancelado, {state.address()}. No envie las imagenes.")
         return
     caption = payload["enhanced"] if decision == "send" else payload["original"]
     label = "version mejorada" if decision == "send" else "caption original"
     n = len(images)
     plural = "imagenes" if n > 1 else "imagen"
     await query.edit_message_text(
-        f"✅ Enviando {n} {plural} con {label}, Sir Rich...\n_{caption[:300]}_",
+        f"✅ Enviando {n} {plural} con {label}, {state.address()}...\n_{caption[:300]}_",
         parse_mode=ParseMode.MARKDOWN,
     )
     try:
@@ -523,7 +640,7 @@ async def _handle_project_open(query, decision: str, token: str):
         return
     payload = state.pending_project.pop(token, None)
     if not payload:
-        await query.edit_message_text("⚠️ Esa lista expiro, Sir Rich. Pida /proyectos de nuevo.")
+        await query.edit_message_text(f"⚠️ Esa lista expiro, {state.address()}. Pida /proyectos de nuevo.")
         return
     from pathlib import Path
     folder_path_str, _, display_name = payload.partition("|")
@@ -532,14 +649,14 @@ async def _handle_project_open(query, decision: str, token: str):
         display_name = folder.name
 
     await query.edit_message_text(
-        f"🔁 Cambiando a proyecto *{display_name}*, Sir Rich...",
+        f"🔁 Cambiando a proyecto *{display_name}*, {state.address()}...",
         parse_mode=ParseMode.MARKDOWN,
     )
     try:
         async with state.send_lock:
             await state.controller.switch_session(display_name)
         await query.message.reply_text(
-            f"✅ Cambiado al proyecto *{display_name}*, Sir Rich. Listo para escribir.",
+            f"✅ Cambiado al proyecto *{display_name}*, {state.address()}. Listo para escribir.",
             parse_mode=ParseMode.MARKDOWN,
         )
     except (ClaudeNotOpenError, PCLockedError) as e:
@@ -561,7 +678,7 @@ async def _offer_sidebar_alternatives(query, error_msg: str):
 
     if not headers:
         await query.message.reply_text(
-            f"❌ {error_msg}\n\nNo pude leer el sidebar para sugerir alternativas, Sir Rich."
+            f"❌ {error_msg}\n\nNo pude leer el sidebar para sugerir alternativas, {state.address()}."
         )
         return
 
@@ -573,7 +690,7 @@ async def _offer_sidebar_alternatives(query, error_msg: str):
 
     await query.message.reply_text(
         f"❌ {error_msg}\n\n"
-        f"📋 *Esto es lo que veo en el sidebar, Sir Rich:*\n"
+        f"📋 *Esto es lo que veo en el sidebar, {state.address()}:*\n"
         f"Toca el correcto y lo abro.",
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode=ParseMode.MARKDOWN,
@@ -583,17 +700,17 @@ async def _offer_sidebar_alternatives(query, error_msg: str):
 async def _handle_switch_callback(query, decision: str, token: str):
     title = state.pending_switch.pop(token, None)
     if not title:
-        await query.edit_message_text("⚠️ Esa lista expiro, Sir Rich. Pida /sesiones de nuevo.")
+        await query.edit_message_text(f"⚠️ Esa lista expiro, {state.address()}. Pida /sesiones de nuevo.")
         return
     await query.edit_message_text(
-        f"🔁 Cambiando a sesion, Sir Rich:\n_{title[:200]}_",
+        f"🔁 Cambiando a sesion, {state.address()}:\n_{title[:200]}_",
         parse_mode=ParseMode.MARKDOWN,
     )
     try:
         async with state.send_lock:
             await state.controller.switch_session(title)
         await query.message.reply_text(
-            f"✅ Cambiada, Sir Rich. Ahora seguimos en:\n_{title[:200]}_",
+            f"✅ Cambiada, {state.address()}. Ahora seguimos en:\n_{title[:200]}_",
             parse_mode=ParseMode.MARKDOWN,
         )
     except (ClaudeNotOpenError, PCLockedError) as e:
@@ -669,17 +786,14 @@ async def _album_flush_after_delay(group_id: str):
 
 
 async def _present_image(update: Update, images: list[bytes], caption: str | None):
-    if not caption or state.groq is None or not state.enhancer_enabled:
+    if not caption or state.enhancer is None or not state.enhancer_enabled:
         await _send_images_to_claude(update, images, caption)
         return
 
     try:
-        enhanced = await state.groq.enhance_prompt(caption, source="texto")
-    except GroqAllKeysFailed:
-        await _send_images_to_claude(update, images, caption)
-        return
-    except GroqError:
-        logger.exception("Groq error en caption de imagen")
+        enhanced = await state.enhancer.enhance(caption, source="texto", user_title=state.address())
+    except EnhancerError:
+        logger.warning("DeepSeek fallo en caption de imagen, mando caption original")
         await _send_images_to_claude(update, images, caption)
         return
 
@@ -692,9 +806,9 @@ async def _present_image(update: Update, images: list[bytes], caption: str | Non
     n = len(images)
     plural = "imagenes" if n > 1 else "imagen"
     await update.message.reply_text(
-        f"🖼 {n} {plural} con caption, Sir Rich:\n\n"
+        f"🖼 {n} {plural} con caption, {state.address()}:\n\n"
         f"📝 *Original*:\n_{caption[:600]}_\n\n"
-        f"✨ *Mejorado por Groq*:\n_{enhanced[:600]}_",
+        f"✨ *Mejorado por DeepSeek*:\n_{enhanced[:600]}_",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Mandar mejorado", callback_data=f"img:send:{token}")],
             [InlineKeyboardButton("📤 Mandar original", callback_data=f"img:orig:{token}")],
@@ -712,7 +826,7 @@ async def _send_images_to_claude(update: Update, images: list[bytes], caption: s
         plural = "imagenes" if n > 1 else "imagen"
         cap_part = f" con caption: _{caption[:120]}_" if caption else ""
         await update.message.reply_text(
-            f"🖼 {n} {plural} enviada(s) a Claude, Sir Rich{cap_part}",
+            f"🖼 {n} {plural} enviada(s) a Claude, {state.address()}{cap_part}",
             parse_mode=ParseMode.MARKDOWN,
         )
     except (ClaudeNotOpenError, PCLockedError) as e:
@@ -738,14 +852,14 @@ async def on_voice_or_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ No pude descargar el audio: {e}")
         return
 
-    await update.message.reply_text("🎙 Transcribiendo (local, sin API), Sir Rich...")
+    await update.message.reply_text(f"🎙 Transcribiendo (local, sin API), {state.address()}...")
     try:
         # Transcripcion LOCAL con faster-whisper (sin Groq, sin tokens). av/ffmpeg
         # decodifica el OGG/Opus de las notas de voz de Telegram directamente.
         transcript = await asyncio.to_thread(transcribe_bytes, audio_bytes)
     except Exception as e:
         logger.exception("Error en transcripcion local")
-        await update.message.reply_text(f"❌ Error transcribiendo, Sir Rich: {e}")
+        await update.message.reply_text(f"❌ Error transcribiendo, {state.address()}: {e}")
         return
 
     if not transcript.strip():
@@ -828,7 +942,7 @@ async def _watch_active_session(app: Application, watcher: TranscriptWatcher):
                 try:
                     await app.bot.send_message(
                         chat_id=ALLOWED_USER_ID,
-                        text=f"ℹ️ Cambie el seguimiento, Sir Rich. Ahora sigo: `{to_announce.parent.name}`",
+                        text=f"ℹ️ Cambie el seguimiento, {state.address()}. Ahora sigo: `{to_announce.parent.name}`",
                         parse_mode=ParseMode.MARKDOWN,
                     )
                 except Exception as e:
@@ -963,6 +1077,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("debug_ui", cmd_debug_ui))
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("enhancer", cmd_enhancer))
+    app.add_handler(CommandHandler("titulo", cmd_titulo))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
     app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^(destr|enh|switch|proj|img):"))
@@ -976,6 +1091,19 @@ def build_app() -> Application:
 
 
 def main():
+    import sys
+    from pathlib import Path
+    from src.pidfile import AlreadyRunning, acquire
+
+    try:
+        acquire(Path("logs/jeffri.pid"))
+    except AlreadyRunning as e:
+        # No arrancar un segundo bot — se pelearian por getUpdates y duplicarian
+        # cada mensaje de Telegram (ver src/pidfile.py para el bug historico).
+        logger.error(str(e))
+        print(f"[Jeffri] {e}", file=sys.stderr)
+        sys.exit(1)
+
     if not TELEGRAM_ENABLED:
         asyncio.run(_run_web_only())
         return

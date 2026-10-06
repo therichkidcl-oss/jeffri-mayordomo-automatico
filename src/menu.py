@@ -23,7 +23,8 @@ COMMAND_MENU: list[tuple[str, str]] = [
     ("stop", "Interrumpe a Claude (envia ESC)"),
     ("fijar", "Fija Jeffri a la sesion actual (no salta a otras)"),
     ("auto", "Vuelve al seguimiento automatico de sesion"),
-    ("enhancer", "Activa o desactiva el pulidor Groq"),
+    ("enhancer", "Activa o desactiva el pulidor DeepSeek"),
+    ("titulo", "Cambia como Jeffri se dirige a ti"),
     ("parar", "Pausa el reenvio hacia Telegram"),
     ("seguir", "Reanuda el reenvio"),
     ("ayuda", "Lista de comandos y como usar el bot"),
@@ -58,5 +59,5 @@ def main_reply_keyboard() -> ReplyKeyboardMarkup:
         keyboard,
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Escribe o toca un comando, Sir Rich",
+        input_field_placeholder="Escribe o toca un comando",
     )

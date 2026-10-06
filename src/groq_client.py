@@ -22,7 +22,7 @@ WHISPER_MODEL = "whisper-large-v3-turbo"
 
 ENHANCE_SYSTEM_PROMPT = """Eres un MEJORADOR DE PROMPTS. NO eres un asistente conversacional. NO respondes nada.
 
-CONTEXTO: el usuario (Sir Rich) escribe una instruccion. Esa instruccion va a ser enviada COMO PROMPT a otro asistente de programacion llamado Claude. Tu trabajo es REFORMULAR el mensaje para que sea un prompt CLARO, ESTRUCTURADO y ACCIONABLE para Claude.
+CONTEXTO: el usuario (el usuario) escribe una instruccion. Esa instruccion va a ser enviada COMO PROMPT a otro asistente de programacion llamado Claude. Tu trabajo es REFORMULAR el mensaje para que sea un prompt CLARO, ESTRUCTURADO y ACCIONABLE para Claude.
 
 REGLAS:
 
@@ -79,7 +79,7 @@ Devuelve SOLO el prompt reformulado. Sin comillas. Sin preambulo. Sin explicacio
 
 ENHANCE_AUDIO_SYSTEM_PROMPT = """Eres un LIMPIADOR Y ESTRUCTURADOR de transcripciones de audio. NO eres un asistente conversacional. NO respondes nada.
 
-CONTEXTO: el usuario (Sir Rich) dicto un mensaje por audio. Whisper lo transcribio pero la transcripcion tiene muletillas, oraciones inconexas, y estilo oral. Ese mensaje va a ser pegado en el chat de Claude (otro asistente). Tu trabajo es LIMPIAR y ESTRUCTURAR el dictado para que sea un prompt claro y conciso.
+CONTEXTO: el usuario (el usuario) dicto un mensaje por audio. Whisper lo transcribio pero la transcripcion tiene muletillas, oraciones inconexas, y estilo oral. Ese mensaje va a ser pegado en el chat de Claude (otro asistente). Tu trabajo es LIMPIAR y ESTRUCTURAR el dictado para que sea un prompt claro y conciso.
 
 REGLAS:
 

@@ -99,7 +99,14 @@ async def run_voice() -> None:
         voice_path = os.path.join("voice_models", f"{PIPER_VOICE}.onnx")
         tts = PiperTTS(voice_path, length_scale=PIPER_LENGTH_SCALE)
         client = DeepSeekClient(DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL)
-        brain = Brain(client, search_fn=web_search, projects_provider=projects_provider)
+        # El titulo honorifico se sincroniza con el que Telegram guardo (ver src/user_settings.py).
+        # Si el usuario aun no eligio, se usa el fallback "mi senor".
+        brain = Brain(
+            client,
+            search_fn=web_search,
+            projects_provider=projects_provider,
+            user_title=state.address(),
+        )
 
         loop = VoiceLoop(
             transcriber=transcribe_bytes,
@@ -171,4 +178,18 @@ async def amain() -> None:
 
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    from src.pidfile import AlreadyRunning, acquire
+
+    try:
+        # Mismo pidfile que src.bot: si el usuario arranca uno y despues el otro,
+        # el segundo se bloquea. Evita el bug historico de dos bots peleandose
+        # por getUpdates de Telegram (ver src/pidfile.py).
+        acquire(Path("logs/jeffri.pid"))
+    except AlreadyRunning as e:
+        logger.error(str(e))
+        print(f"[Jeffri] {e}", file=sys.stderr)
+        sys.exit(1)
+
     asyncio.run(amain())

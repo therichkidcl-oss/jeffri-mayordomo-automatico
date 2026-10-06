@@ -37,7 +37,7 @@ def create_app(state) -> FastAPI:
         return {
             "paused": state.paused,
             "enhancer_enabled": state.enhancer_enabled,
-            "groq_available": state.groq is not None,
+            "enhancer_available": state.enhancer is not None,
         }
 
     from fastapi import WebSocket

@@ -39,12 +39,16 @@ def test_list_recent_sessions_returns_sorted(tmp_path):
 
 
 def test_session_info_decoded_folder_name(tmp_path):
-    proj = tmp_path / "C--Users-Reimo-Desktop-pyton-pantalla"
+    # Claude Code codifica "\" como "-", perdiendo espacios del path. El decode
+    # es best-effort: para rutas sin espacios se recupera exactamente; para rutas
+    # con espacios se obtiene un path con \ en vez del espacio (aceptable: solo
+    # se usa para display, el nombre amigable viene de sessions-index.json).
+    proj = tmp_path / "C--Users-john-Desktop-my-project"
     proj.mkdir()
     (proj / "s.jsonl").write_text('{}\n')
 
     sessions = list_recent_sessions(tmp_path, limit=1)
-    assert sessions[0].decoded_path == "C:\\Users\\Reimo\\Desktop\\pyton pantalla"
+    assert sessions[0].decoded_path == "C:\\Users\\john\\Desktop\\my\\project"
 
 
 def test_detect_active_session_skips_deleted_files(tmp_path, monkeypatch):

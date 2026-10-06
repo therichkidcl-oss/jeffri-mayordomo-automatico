@@ -1,310 +1,337 @@
-# 🎩 Jeffri — Mayordomo Automatico
+# 🎩 Jeffri — Mayordomo automatico
 
-> Tu mayordomo personal en Telegram que controla Claude Code Desktop por ti.
-> Hablale por texto, voz o foto y Jeffri se encarga de que Claude haga el trabajo.
+> *"A su servicio."* — Un bot de Telegram con tono de mayordomo que opera tu
+> Claude Code Desktop en remoto. Hablale por texto, voz o foto desde el
+> celular; Jeffri lo pule con DeepSeek y lo pega en Claude por ti.
 
-**Jeffri** es un bot de Telegram que se conecta a tu instalacion local de **Claude Code Desktop**. Cuando no estas frente al PC, le mandas un mensaje a Jeffri por Telegram y el:
+**Jeffri** vive en tu PC. Cuando estas afuera y te acuerdas de algo que
+quieres pedirle a Claude, le mandas un mensaje a Jeffri por Telegram y el:
 
-1. Lo recibe en tu PC (que sigue corriendo en casa).
-2. Lo mejora con Groq (corrige tildes, puntuacion).
-3. Te pide confirmacion con `[✅ Mandar mejorado] [📤 Original] [❌ Cancelar]`.
-4. Lo pega en la ventana de Claude Code Desktop como si lo hubieras tipeado tu.
-5. Reenvia a tu Telegram lo que Claude responde, screenshots del navegador incluidos.
+1. Lo recibe en tu PC (encendida y desbloqueada).
+2. Lo pule con **DeepSeek V4.1-Flash** (corrige tildes, ordena las frases, lo convierte en un prompt accionable).
+3. Te pregunta en Telegram con `[✅ Mandar mejorado] [📤 Original] [❌ Cancelar]`.
+4. Lo pega en Claude Code Desktop como si lo hubieses tipeado.
+5. Reenvia a tu Telegram las respuestas de Claude, incluidos screenshots.
 
-Todo usando **tu plan Max de Claude Code** — cero costos de API.
-
----
-
-## 📜 ¿Por que Jeffri?
-
-Imagina que estas afuera y te acuerdas de un bug que quieres arreglar en tu proyecto. Sin Jeffri tendrias que esperar a llegar a casa. Con Jeffri:
-
-```
-Tu en Telegram: 🎙 (audio) "oye, arregla el login que ayer me reportaron error"
-Jeffri:         🎙 Transcribiendo con Whisper, Sir Rich...
-Jeffri:         🎙 Original: Oye, arregla el login que ayer me reportaron error.
-                ✨ Mejorado: Arregla el login. Ayer me reportaron un error alli.
-                [✅ Mandar mejorado] [📤 Original] [❌ Cancelar]
-Tu:             [✅ Mandar mejorado]
-Jeffri:         ✅ Enviando version mejorada, Sir Rich...
-                (el texto aparece en Claude Code Desktop en tu PC y Claude empieza
-                 a trabajar; las respuestas te llegan al chat de Telegram)
-```
+Jeffri usa **tu plan de Claude Code** por autenticacion local — no gasta API
+de Anthropic.
 
 ---
 
-## 🚀 Instalacion (3 pasos, ~10 minutos)
+## 🎓 Como se dirige a ti
 
-### 1️⃣ Requisitos previos
+La primera vez que mandes `/start`, Jeffri te preguntara:
+
+> *"🎩 A su servicio. Soy Jeffri, su mayordomo. Antes de ponerme a su
+> disposicion, permitame una pregunta: ¿como desea que me dirija a usted?
+> Puede responder con el titulo que prefiera — por ejemplo `Sir Smith`,
+> `Doña Maria`, `Jefa`, `Doctor`, `Capitan`, o cualquier forma que sea de
+> su agrado. Lo recordare en adelante."*
+
+Tu respondes como quieras (`Jefa`, `Patron`, `Mi reina`, etc.) y Jeffri te
+tratara asi para siempre. Puedes cambiarlo despues con `/titulo Nuevo Titulo`
+o resetearlo con `/titulo reset`.
+
+---
+
+## 🚀 Instalacion (10 minutos)
+
+### Requisitos previos
 
 | Requisito | Como verificar |
 |---|---|
-| Windows 10/11 | `winver` |
-| Python 3.13+ | `python --version` |
-| Claude Code Desktop instalado y autenticado con tu plan Max | Abrelo y verifica que puedes chatear |
-| Git (opcional, solo para clonar) | `git --version` |
+| **Windows 10 u 11** | `winver` |
+| **Python 3.13+** | `python --version` |
+| **Claude Code Desktop** instalado y autenticado con tu plan | abrelo y verifica que puedes chatear con Claude |
+| **Git** (para clonar) | `git --version` |
 
-> **Importante**: el bot usa la autenticacion de Claude Code Desktop, no la API directa. Si tienes la variable `ANTHROPIC_API_KEY` en el entorno, el bot la ignora — perfecto.
+> ℹ️ El bot usa la autenticacion local de Claude Code Desktop, no la API.
+> Si tienes `ANTHROPIC_API_KEY` en el entorno, el bot la ignora.
 
-### 2️⃣ Clonar e instalar dependencias
+### 1. Clonar e instalar
 
 ```powershell
-# Clonar el repo
-git clone https://github.com/<tu-usuario>/jeffri-mayordomo-automatico.git
+git clone https://github.com/therichkidcl-spec/jeffri-mayordomo-automatico.git
 cd jeffri-mayordomo-automatico
 
-# Crear entorno virtual e instalar
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-Si PowerShell rechaza ejecutar scripts, corre una sola vez:
+Si PowerShell rechaza ejecutar scripts, una sola vez:
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
-### 3️⃣ Configurar `.env`
+### 2. Configurar `.env`
 
-Copia la plantilla:
 ```powershell
 Copy-Item .env.example .env
+notepad .env
 ```
 
-Edita `.env` con tus valores:
+Rellena por lo menos estos 3 campos:
 
-```env
-# Token del bot de Telegram (paso A mas abajo)
-TELEGRAM_BOT_TOKEN=123456789:ABC-DEF...
-
-# Tu user_id de Telegram (paso B)
-TELEGRAM_ALLOWED_USER_ID=123456789
-
-# Ruta a la carpeta de proyectos de Claude (no cambiar a menos que sepas que haces)
-CLAUDE_PROJECTS_DIR=C:\Users\TU_USUARIO\.claude\projects
-
-# (Opcional) API keys de Groq para enhancer + transcripcion de audio.
-# Sin keys, el bot funciona pero sin mejora de prompts ni transcripcion de voz.
-GROQ_API_KEYS=gsk_xxx,gsk_yyy,gsk_zzz
+**(a) Token del bot de Telegram** — en Telegram abre `@BotFather`:
+```
+/newbot
+→ (elige nombre, ej. "Jeffri IA")
+→ (elige username, debe terminar en bot, ej. mi_jeffri_bot)
+→ Copia el token (123456789:ABC-DEF...) a TELEGRAM_BOT_TOKEN
 ```
 
-**A. Crear bot de Telegram**:
-1. En Telegram, abre `@BotFather`.
-2. Manda `/newbot`.
-3. Elige nombre (cualquier cosa, ej: "Jeffri IA") y username (debe terminar en `bot`, ej: `mi_jeffri_bot`).
-4. Copia el token que te da (`123456789:ABC-DEF...`) al `.env`.
+**(b) Tu user_id de Telegram** — abre `@userinfobot`:
+```
+/start
+→ Copia el numero (10 digitos) a TELEGRAM_ALLOWED_USER_ID
+```
 
-**B. Obtener tu user_id**:
-1. En Telegram, abre `@userinfobot`.
-2. Pulsa `/start`.
-3. Copia tu user_id (~10 digitos) al `.env`.
+**(c) Ruta de proyectos de Claude** — cambia `TU_USUARIO` por tu usuario
+Windows real en `CLAUDE_PROJECTS_DIR`.
 
-**C. (Opcional) Obtener keys de Groq**:
-1. Ve a [console.groq.com/keys](https://console.groq.com/keys).
-2. Crea una o mas API keys (gratis hasta cierta cuota).
-3. Pegalas separadas por coma en `GROQ_API_KEYS`.
+**Opcional (recomendado)**:
 
-### 4️⃣ Probar
+**(d) DeepSeek API key** para el enhancer. Si no la pones, el bot funciona
+pero manda tus mensajes sin pulir. Obtenla en
+[platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)
+(cuenta gratis). Pegala en `DEEPSEEK_API_KEY`.
+
+### 3. Verificar
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -v
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Deberia decir `48 passed`. Si no, algo esta mal con la instalacion.
+Debe decir `142 passed`. Si falla, revisa `.env`.
 
-### 5️⃣ Arrancar
+### 4. Arrancar
 
-Doble-click en `run.bat`, o desde terminal:
+**Doble-click en `run.bat`**, o desde terminal:
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python -m src.bot
+python -m src.main
 ```
 
-En Telegram, escribele `/start` a tu bot. Deberia responder con la sesion activa.
+Esto arranca Telegram **y** la voz F9 (si la activaste). Si solo quieres
+Telegram sin voz, usa `python -m src.bot`.
+
+En Telegram, escribele `/start` a tu bot. Te preguntara el titulo honorifico
+y a partir de ahi, listo.
+
+> 🔒 **Single-instance lock**: Jeffri guarda su PID en `logs/jeffri.pid`.
+> Si intentas arrancarlo dos veces, el segundo se bloquea con un mensaje
+> claro. Esto previene duplicados en Telegram.
 
 ---
 
-## 📱 Comandos de Telegram
+## 📱 Comandos
 
 | Comando | Que hace |
 |---|---|
-| `/start` | Bienvenida + nombre de la sesion activa detectada |
-| `/estado` | Muestra si Jeffri esta activo/pausado, sesion actual, estado de Groq |
-| `/proyectos` | Lista tus proyectos de Claude Code con botones. Toca uno → cambia de sesion automaticamente |
-| `/sesiones` | Lista plana de las 10 sesiones mas recientes (sin agrupar por proyecto) |
-| `/captura` | Screenshot de la ventana de Claude Desktop, te llega como foto |
-| `/stop` | Manda ESC a Claude (lo interrumpe si esta trabajando) |
-| `/enhancer on/off` | Activa o desactiva el pulidor Groq. Si esta OFF, los textos van crudos a Claude |
-| `/parar` | Pausa el reenvio PC→Telegram (Claude sigue trabajando pero no recibes updates) |
+| `/start` | Bienvenida + sesion activa. Primera vez: pregunta tu titulo honorifico |
+| `/titulo [nuevo]` | Ver o cambiar como Jeffri se dirige a ti. `/titulo reset` lo borra |
+| `/estado` | Estado del bot: activo/pausado, sesion actual, enhancer on/off |
+| `/proyectos` | Lista proyectos de Claude. Tocas uno → cambia la sesion automaticamente |
+| `/sesiones` | Lista plana de las 10 sesiones recientes |
+| `/captura` | Screenshot de la ventana de Claude Desktop |
+| `/stop` | Manda ESC a Claude (lo interrumpe) |
+| `/enhancer on/off` | Activa o desactiva el pulidor DeepSeek |
+| `/parar` | Pausa el reenvio PC→Telegram |
 | `/seguir` | Reanuda el reenvio |
-| `/debug_ui` | Dump de los elementos UI visibles (para diagnostico) |
-| `/ayuda` | Lista de todos los comandos |
+| `/fijar` | Fija el bot a la sesion actual (evita flip-flop) |
+| `/auto` | Vuelve al seguimiento automatico |
+| `/ayuda` | Lista todos los comandos |
 
-### 📥 Tipos de entrada que soporta
+### Entradas que acepta
 
-| Entrada en Telegram | Que pasa |
+| Mandas... | Jeffri hace... |
 |---|---|
-| **Texto** | Pasa por Groq (pulido) → muestra Original/Mejorado con botones → al confirmar, pega en Claude |
-| **Voz/audio** | Whisper transcribe → Groq pule → muestra Original/Mejorado con botones → al confirmar, pega en Claude |
-| **Foto** | Se copia al clipboard como imagen → pega en Claude (con caption si pusiste uno) |
-| **Texto destructivo** (`deploy`, `borra`, `rm`, `delete`, `drop`, `git push --force`, `produccion`, etc.) | Pide confirmacion Si/No antes de pegar |
+| **Texto** | DeepSeek lo pule → te muestra Original / Mejorado → al confirmar lo pega en Claude |
+| **Voz / audio** | `faster-whisper` lo transcribe LOCAL → DeepSeek lo pule → confirmas → va a Claude |
+| **Foto** | La copia al clipboard → la pega en Claude (con caption si pones texto) |
+| **Texto destructivo** (`deploy`, `borra`, `rm`, `drop`, `push --force`, `produccion`...) | Pide confirmacion Si/No antes de pegar |
 
-### 🎯 Cambiar de proyecto (flujo visual)
+### Push-to-talk F9 (voz local)
 
-1. Toca `/proyectos` en Telegram.
-2. Te aparece una lista: `📁 IA-HUB · 4`, `📁 MiBot · 1`, etc. (el numero es cuantas sesiones tiene cada proyecto).
-3. Tocas el que quieras (ej: `📁 IA-HUB`).
-4. Jeffri toma screenshot del sidebar de Claude Desktop, busca "IA-HUB" con OCR, calcula coordenadas y hace click. La sesion se abre en tu PC.
-5. Ahora cuando mandes mensajes, van a esa sesion.
+Si `VOICE_ENABLED=true` en `.env`, cuando ejecutas `python -m src.main` tienes
+un loop de voz:
+
+1. Manten **F9** presionada y habla.
+2. Al soltar, `faster-whisper` transcribe local, DeepSeek entiende, Piper
+   responde con TTS natural de mayordomo.
+3. Si tu pedido es ejecutable, Jeffri propone un prompt y pide confirmacion
+   por voz antes de pasarlo a Claude.
+
+Los modelos de Piper viven en `voice_models/` (se descargan la primera vez).
 
 ---
 
 ## 🛡️ Seguridad
 
-- **Whitelist obligatoria**: solo el `TELEGRAM_ALLOWED_USER_ID` del `.env` puede usar el bot. Los demas se ignoran silenciosamente (y se logean como warning).
-- **`.env` esta `.gitignore`'d**: tu token y user_id nunca van al repo.
-- **Confirmacion destructiva**: comandos peligrosos requieren tap Si/No.
-- **Sin cloud**: todo corre en tu PC. Los audios, imagenes y textos no se guardan en servidores externos (excepto el procesamiento momentaneo de Groq para enhancer/Whisper).
+- **Whitelist estricta**: solo el `TELEGRAM_ALLOWED_USER_ID` del `.env` puede
+  usar el bot. Los demas se ignoran silenciosamente y se logean como warning.
+- **`.env` gitignoreado**: tu token y user_id nunca van al repo.
+- **`data/user_settings.json` gitignoreado**: tu titulo honorifico es local.
+- **Confirmacion destructiva**: `rm`, `deploy`, etc. requieren tap Si/No.
+- **Todo corre local**: los audios, imagenes y textos no van a servidores
+  externos (excepto el procesamiento momentaneo de DeepSeek para el enhancer).
+- **Single-instance lock**: solo un proceso de Jeffri puede correr a la vez.
 
 ---
 
-## ⚠️ Limitaciones
-
-- La PC debe estar **prendida y desbloqueada** (no funciona con Win+L).
-- **Claude Code Desktop debe estar abierto** (en cualquier sesion).
-- Si tienes **varias ventanas de Claude** abiertas, Jeffri usa la primera visible.
-- El cambio de proyecto usa OCR — funciona bien con la mayoria de los proyectos pero puede fallar si:
-  - El proyecto esta fuera de vista en el sidebar (hay que scrollear).
-  - El OCR lee mal el texto (ej: `IA-HUB` lo confunde con `IA+UB`). Jeffri tiene matching fuzzy para esto, pero no es perfecto.
-- El input del chat se localiza por coordenadas aproximadas (mitad horizontal, 80px desde abajo). En resoluciones muy distintas puede caer en otro lado — si pasa, avisame y ajusto las constantes.
-
----
-
-## 🧠 Como funciona por dentro
+## 🏗️ Como funciona por dentro
 
 ```
-                    Tu celular (Telegram)
-                            ↕
-              ┌─────────────────────────────┐
-              │  Jeffri (Python en tu PC)   │
-              ├─────────────────────────────┤
-              │ • bot.py     handlers Telegram        │
-              │ • config.py  carga .env               │
-              │ • groq_client      enhancer + Whisper │
-              │ • formatters       eventos → Telegram │
-              │ • security         whitelist + destr  │
-              │ • session_detector  que sesion usar   │
-              │ • transcript_watcher  vigila .jsonl   │
-              │ • claude_controller  UI + OCR + click │
-              └─────────────────────────────┘
-                            ↕
-              ┌─────────────────────────────┐
-              │   Claude Code Desktop       │
-              │   (tu sesion activa)        │
-              └─────────────────────────────┘
-                            ↕
-              C:\Users\TU\.claude\projects\
-                   <proyecto>\<uuid>.jsonl
-              ← se actualiza en tiempo real
-                cada vez que Claude habla
+            Tu celular (Telegram)
+                    ↕
+    ┌─────────────────────────────────┐
+    │  Jeffri (Python en tu PC)       │
+    ├─────────────────────────────────┤
+    │ bot.py              handlers Telegram      │
+    │ main.py             entrypoint Telegram+Voz │
+    │ user_settings.py    titulo honorifico       │
+    │ enhancer.py         DeepSeek V4.1-Flash     │
+    │ stt.py              faster-whisper local    │
+    │ voice/              push-to-talk F9 + TTS   │
+    │ transcript_watcher  vigila los .jsonl       │
+    │ claude_controller   UI automation + OCR     │
+    │ pidfile.py          single-instance lock    │
+    └─────────────────────────────────┘
+                    ↕
+    ┌─────────────────────────────────┐
+    │  Claude Code Desktop            │
+    │  (tu sesion abierta)            │
+    └─────────────────────────────────┘
+                    ↕
+    C:\Users\<tu>\.claude\projects\
+         <proyecto>\<uuid>.jsonl  ← se actualiza
+         en tiempo real cuando Claude habla
 ```
 
-### Flujo end-to-end
+### Flujo end-to-end (texto)
 
-1. **Tu mandas algo por Telegram** (texto, voz, foto).
-2. **`bot.py` lo recibe**, valida que sea tu user_id, lo procesa segun tipo:
-   - Voz → `groq_client.transcribe()` con Whisper.
-   - Texto/transcripcion → `groq_client.enhance_prompt()` con llama-3.3-70b para pulir.
-3. **Te muestra confirmacion** con botones (Original/Mejorado/Cancelar).
-4. Al confirmar, **`claude_controller`** toma el control:
+1. Mandas texto por Telegram.
+2. `bot.py` valida tu user_id y detecta si es destructivo.
+3. Si no es destructivo y DeepSeek esta disponible, `enhancer.py` lo pule
+   usando `deepseek-flash` con thinking mode DESACTIVADO.
+4. Te muestra Original / Mejorado con botones.
+5. Al confirmar, `claude_controller`:
    - Encuentra la ventana de Claude Desktop.
-   - Hace click en el area del input del chat.
-   - Copia tu texto al clipboard y manda Ctrl+V, despues Enter.
-5. **Claude empieza a trabajar**. Cada cosa que escribe se va guardando en el `.jsonl` de la sesion.
-6. **`transcript_watcher`** vigila ese `.jsonl` con `watchdog`. Cada linea nueva la parsea con `formatters` y la manda a tu Telegram.
-7. **Filtro**: solo se reenvian mensajes de texto del asistente y screenshots del navegador (Playwright/Chrome). Los tool calls de Read/Edit/Bash NO se reenvian (seria spam).
+   - Click en el input del chat.
+   - Pega via clipboard + Enter.
+6. `transcript_watcher` vigila el `.jsonl` de la sesion. Cada evento nuevo:
+   `formatters` lo convierte en un mensaje de Telegram que llega a ti.
 
 ---
 
 ## 🧪 Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -v
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Cubre los modulos puros (config, session_detector, formatters, security, transcript_watcher). El `bot.py` y `claude_controller.py` son integration points — se validan con smoke test manual.
+142 tests cubren los modulos puros (config, formatters, security, enhancer,
+pidfile, stt, user_settings, voice/brain, etc.). `claude_controller.py` es
+integration point — se valida con smoke test manual.
 
 ---
 
 ## 🐛 Troubleshooting
 
+### "Otra instancia de Jeffri ya corre (PID 1234)"
+Ya hay un proceso vivo. Matalo:
+```powershell
+taskkill /F /PID 1234
+Remove-Item logs\jeffri.pid
+```
+Y vuelve a arrancar.
+
 ### "No encontre ninguna ventana de Claude Desktop"
-Abre Claude Code Desktop. Si, literalmente.
+Abre Claude Code Desktop. Literalmente.
 
 ### "Tu PC esta bloqueada"
-Desbloqueala (escribe tu contrasena de Windows).
+Desbloqueala con Windows+contrasena.
 
-### Mando un mensaje pero Claude no recibe nada
-- ¿El bot esta corriendo? Mira si `run.bat` sigue abierto o si la terminal muestra logs.
-- ¿Esta pausado? Manda `/estado`.
-- ¿El input del chat esta visible? Tiene que estar al fondo de la ventana de Claude Desktop.
+### El bot no responde a mis mensajes
+- Verifica que `TELEGRAM_ALLOWED_USER_ID` sea TU user_id (no otro).
+- Mira `logs/jeffri.log` — hay un `[WARN]` que dice si un user_id no autorizado
+  intento usar el bot.
+- Si cambiaste de bot token, borra `logs/jeffri.pid` y reinicia.
+
+### El enhancer no esta puliendo (va directo)
+- Verifica que `DEEPSEEK_API_KEY` en `.env` es valida.
+- `/estado` te dice si el enhancer esta ON y si DeepSeek esta habilitado.
+
+### Mensajes se duplican en Telegram
+- Casi siempre es dos instancias corriendo. Mira:
+  ```powershell
+  Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match 'src\.(bot|main)' }
+  ```
+  Si ves mas de 1, matalos todos y arranca uno con `python -m src.main`.
+  El pidfile lock impide esto a partir de 2026-09-12 — si lo ves, revisa que
+  tengas la version actualizada.
 
 ### `/proyectos` → toco un proyecto y no cambia
-- El proyecto puede estar fuera de vista en el sidebar. Scrollea manualmente y reintenta.
-- Si el OCR lee mal el nombre, manda `/debug_ui` para ver que textos detecta.
+- El proyecto puede estar fuera de vista en el sidebar de Claude. Scrollea manualmente.
+- Si el OCR lee mal el nombre, manda `/debug_ui` para ver que detecta.
 
-### El enhancer hace al texto "conversacional" (responde en vez de pulir)
-- Probablemente el modelo se confundio. Manda `/enhancer off` para deshabilitarlo temporalmente.
-
-### Pierdo el bot porque me trabe en otra ventana
-- El bot sigue corriendo en background. Vuelve a la terminal donde esta y lee los logs.
-- Si lo cerraste sin querer, doble-click en `run.bat` otra vez.
+### F9 no graba audio para la voz
+- Verifica que `VOICE_ENABLED=true` y que arrancaste con `python -m src.main`
+  (NO con `src.bot`).
+- Verifica que la voz Piper esta descargada en `voice_models/`.
+- Si otra app esta usando F9, cambia `VOICE_HOTKEY` en `.env`.
 
 ---
 
-## 📚 Mas detalles
+## 📂 Estructura
 
-- [Diseno y arquitectura](docs/plans/2026-05-13-telegram-claude-bridge-design.md)
-- [Plan de implementacion](docs/plans/2026-05-13-telegram-claude-bridge-plan.md)
-- [Para Claude: instrucciones de auto-instalacion](CLAUDE.md)
+```
+src/
+├── bot.py              Entrypoint Telegram + handlers
+├── main.py             Entrypoint unificado (Telegram + voz F9)
+├── config.py           Carga .env
+├── user_settings.py    Persistencia del titulo honorifico
+├── enhancer.py         Pulidor con DeepSeek
+├── stt.py              Transcripcion local con faster-whisper
+├── voice/              Loop de voz F9 (DeepSeek + Piper)
+├── claude_controller.py  UI automation (pywinauto + OCR + click)
+├── transcript_watcher.py Vigila los .jsonl de Claude
+├── formatters.py       Eventos .jsonl → mensajes de Telegram
+├── session_detector.py Detecta sesion/proyecto activo
+├── security.py         Whitelist + deteccion destructiva
+├── pidfile.py          Single-instance lock
+├── web_server.py       (opcional) FastAPI para UI web local
+├── ws_chat.py          (opcional) WebSocket del web UI
+└── menu.py             Teclado persistente y menu de comandos
+
+tests/     142 tests que cubren los modulos puros
+docs/      disenos y planes historicos
+static/    (opcional) UI web local
+```
+
+---
+
+## 🤖 Para Claude Code (IA): instalacion asistida
+
+Si tu Claude Code Desktop (u otra IA) te pregunta como ayudarte a instalar
+Jeffri, dile:
+
+> *"Lee `CLAUDE.md` del repo e instalame Jeffri siguiendo esos pasos."*
+
+El archivo [`CLAUDE.md`](CLAUDE.md) tiene instrucciones paso a paso para que
+la IA haga el setup entero (verificar requisitos, pedirte los tokens, correr
+tests, arrancar) sin que tengas que escribir comandos manualmente.
 
 ---
 
 ## ⚖️ Licencia
 
-Uso personal. No es producto comercial. Anthropic's terms of service para Claude Code Desktop aplican — la autenticacion OAuth es para uso individual.
+MIT — ver [LICENSE](LICENSE).
+
+Jeffri usa la autenticacion local de Claude Code Desktop; los terminos de
+servicio de Anthropic para Claude Code aplican a tu uso individual.
 
 ---
 
-## 🦇 Modo Batcave (web UI local)
-
-Ademas de Telegram, Jeffri sirve una web local en `http://localhost:8000` con tema Batcave pixel art. Mismo backend, dos canales en paralelo.
-
-### Que tiene
-
-- Chat con Jeffri (mismo flujo de enhancer Groq + confirmacion que Telegram)
-- Escena pixel art con Jeffri respirando en su escritorio, monitor Batcomputer
-- Toolbar con botones: 📁 Proyectos, 📸 Captura, ⏹ Stop
-- Mensajes y screenshots de Claude reenviados en tiempo real (WebSocket)
-- Telegram sigue funcionando en paralelo
-
-### Acceso solo desde tu PC (default)
-
-Doble-click en `run.bat` y abrir Chrome en `http://localhost:8000`.
-
-### Acceso desde celular en tu red local
-
-1. Editar `.env`:
-   ```
-   WEB_BIND=0.0.0.0
-   WEB_AUTH_TOKEN=un_token_secreto_aqui
-   ```
-2. Reiniciar el bot.
-3. En el celular: `http://192.168.x.x:8000?token=un_token_secreto_aqui` (primera vez).
-   El token queda guardado en localStorage del navegador.
-
-**Importante**: si NO seteas `WEB_AUTH_TOKEN` y pones `WEB_BIND=0.0.0.0`, cualquiera en la red puede usar el bot. Siempre setea el token si expones la red.
-
----
-
-🎩 *— A su servicio, Sir Rich.*
+🎩 *— A sus ordenes.*

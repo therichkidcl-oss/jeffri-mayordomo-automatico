@@ -59,7 +59,7 @@ class VoiceLoop:
                     await self.controller.switch_session(resp.switch_project)
             except Exception as e:
                 logger.exception("error cambiando de proyecto")
-                self.speak(f"No pude cambiar de proyecto, Sir Rich: {e}")
+                self.speak(f"No pude cambiar de proyecto, {self.brain.user_title}: {e}")
             return
 
         if resp.dispatch_prompt:
@@ -68,7 +68,7 @@ class VoiceLoop:
                     await self.controller.send(resp.dispatch_prompt)
             except Exception as e:
                 logger.exception("error mandando a Claude")
-                self.speak(f"No pude mandarselo a Claude, Sir Rich: {e}")
+                self.speak(f"No pude mandarselo a Claude, {self.brain.user_title}: {e}")
                 return
             # esperar la respuesta de Claude y resumirla en voz
             try:

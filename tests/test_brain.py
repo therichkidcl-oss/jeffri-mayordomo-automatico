@@ -49,7 +49,7 @@ def test_is_negative():
 # --- charla / opinion ---
 
 def test_plain_conversation_speaks_and_no_dispatch():
-    client = FakeClient([_content("Opino que Redis es buena idea, Sir Rich.")])
+    client = FakeClient([_content("Opino que Redis es buena idea, Sir Smith.")])
     b = Brain(client, search_fn=lambda q, max_results=5: [])
     r = _run(b.handle_user_turn("que opinas de usar redis?"))
     assert isinstance(r, BrainResponse)
@@ -65,7 +65,7 @@ def test_web_search_tool_then_final_answer():
     # 1ra respuesta: pide buscar; 2da: responde con lo encontrado
     client = FakeClient([
         _tool_call("web_search", {"query": "precio bitcoin hoy"}),
-        _content("Segun lo que encontre, ronda los 100k, Sir Rich."),
+        _content("Segun lo que encontre, ronda los 100k, Sir Smith."),
     ])
     captured = {}
     def fake_search(q, max_results=5):

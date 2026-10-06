@@ -1,9 +1,12 @@
 """Cerebro conversacional de Jeffri Voz (DeepSeek).
 
 Es un companero que charla, investiga (busqueda web cuando hace falta), opina y
-sugiere. Cuando Sir Rich quiere EJECUTAR/construir algo, el cerebro redacta un
+sugiere. Cuando el usuario quiere EJECUTAR/construir algo, el cerebro redacta un
 prompt "masticado" para Claude y pide confirmacion por voz antes de mandarlo.
 Tambien condensa la salida de Claude en un resumen hablado.
+
+El tono mayordomo usa el titulo honorifico que el usuario eligio (ver
+src/user_settings.py). Si no hay titulo, fallback a "mi senor".
 
 Maquina de estados: idle -> conversing -> awaiting_confirmation -> (dispatch) -> idle
 """
@@ -17,13 +20,13 @@ from src.voice.search import format_results_for_llm
 logger = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """Eres Jeffri, el companero de voz de Sir Rich. Hablas espanol latino neutro con "tu" (NUNCA voseo argentino: nada de "vos", "tenes", "queres", "dale", "che"). Tratas al usuario como "Sir Rich".
+SYSTEM_PROMPT = """Eres Jeffri, el companero de voz del usuario (que te pide dirigirte a el como "{user_title}"). Hablas espanol latino neutro con "tu" (NUNCA voseo argentino: nada de "vos", "tenes", "queres", "dale", "che"). Tratas al usuario con tono de mayordomo sumiso, dirigiendote a el como "{user_title}" cuando sea natural.
 
 TU ROL:
-- Conversas con Sir Rich de forma natural y breve (esto es VOZ: respuestas cortas, sin listas largas ni markdown).
+- Conversas con {user_title} de forma natural y breve (esto es VOZ: respuestas cortas, sin listas largas ni markdown).
 - Investigas, opinas y sugieres. Si necesitas informacion actual (precios, noticias, versiones nuevas), usa la herramienta web_search.
 - Tu NO ejecutas codigo ni tareas de desarrollo. Para eso esta Claude, otro asistente que hace el trabajo pesado en la PC.
-- Cuando Sir Rich quiere EJECUTAR, CONSTRUIR, PROGRAMAR o que se HAGA algo concreto, usa la herramienta dispatch_to_claude: redacta un PROMPT claro, estructurado y accionable para Claude (masticado y mejorado, sin inventar datos que Sir Rich no dio).
+- Cuando {user_title} quiere EJECUTAR, CONSTRUIR, PROGRAMAR o que se HAGA algo concreto, usa la herramienta dispatch_to_claude: redacta un PROMPT claro, estructurado y accionable para Claude (masticado y mejorado, sin inventar datos que {user_title} no dio).
 - Si solo estan conversando/opinando, responde normal SIN usar dispatch_to_claude.
 
 REGLAS DE VOZ:
@@ -31,7 +34,7 @@ REGLAS DE VOZ:
 - Directo, con criterio, sin rodeos ni relleno.
 """
 
-SUMMARY_SYSTEM_PROMPT = """Eres el resumidor de Jeffri. Claude (un asistente de programacion) acaba de escribir una respuesta larga y tecnica. Resume en 1-3 frases HABLADAS lo mas importante para Sir Rich, en espanol neutro con "tu", sin markdown ni tecnicismos innecesarios. Ejemplo: "Claude ya arreglo el login y corrio los tests, dice que faltan 2 por revisar". Responde SOLO con el resumen."""
+SUMMARY_SYSTEM_PROMPT = """Eres el resumidor de Jeffri. Claude (un asistente de programacion) acaba de escribir una respuesta larga y tecnica. Resume en 1-3 frases HABLADAS lo mas importante para {user_title}, en espanol neutro con "tu", sin markdown ni tecnicismos innecesarios. Ejemplo: "Claude ya arreglo el login y corrio los tests, dice que faltan 2 por revisar". Responde SOLO con el resumen."""
 
 
 TOOLS = [
@@ -51,7 +54,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "dispatch_to_claude",
-            "description": "Usa esto cuando Sir Rich quiere EJECUTAR, construir, programar, arreglar o que se HAGA una tarea concreta en la PC. Redacta un prompt claro y accionable para Claude. NO inventes datos que Sir Rich no dio.",
+            "description": "Usa esto cuando el usuario quiere EJECUTAR, construir, programar, arreglar o que se HAGA una tarea concreta en la PC. Redacta un prompt claro y accionable para Claude. NO inventes datos que el usuario no dio.",
             "parameters": {
                 "type": "object",
                 "properties": {"prompt": {"type": "string", "description": "El prompt masticado y mejorado para Claude"}},
@@ -63,7 +66,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "switch_project",
-            "description": "Usa esto cuando Sir Rich quiere CAMBIAR de proyecto o sesion de Claude (ej. 'cambiate a IA-HUB', 'trabajemos en el bot de trading', 'abre el proyecto X'). Pasa el nombre del proyecto lo mas parecido a la lista de proyectos disponibles que ves en el system prompt.",
+            "description": "Usa esto cuando el usuario quiere CAMBIAR de proyecto o sesion de Claude (ej. 'cambiate a IA-HUB', 'trabajemos en el bot de trading', 'abre el proyecto X'). Pasa el nombre del proyecto lo mas parecido a la lista de proyectos disponibles que ves en el system prompt.",
             "parameters": {
                 "type": "object",
                 "properties": {"project_name": {"type": "string", "description": "Nombre del proyecto al que cambiar"}},
@@ -103,16 +106,24 @@ class BrainResponse:
 class Brain:
     MAX_HISTORY = 20  # ventana rodante de turnos
 
-    def __init__(self, deepseek_client, search_fn, projects_provider=None):
+    def __init__(
+        self,
+        deepseek_client,
+        search_fn,
+        projects_provider=None,
+        user_title: str = "mi senor",
+    ):
         self.client = deepseek_client
         self.search = search_fn
         self.projects_provider = projects_provider  # callable() -> list[str] de nombres
+        self.user_title = user_title
         self.history: list[dict] = []
         self.state = "idle"
         self._pending_prompt: str | None = None
 
     def _system_prompt(self) -> str:
-        prompt = SYSTEM_PROMPT
+        # replace (no .format): el prompt contiene llaves ortograficas de ejemplos.
+        prompt = SYSTEM_PROMPT.replace("{user_title}", self.user_title)
         if self.projects_provider is not None:
             try:
                 projects = self.projects_provider() or []
@@ -130,7 +141,7 @@ class Brain:
     async def handle_user_turn(self, text: str) -> BrainResponse:
         text = (text or "").strip()
         if not text:
-            return BrainResponse(speech="No te escuche, Sir Rich, repite.")
+            return BrainResponse(speech=f"No te escuche, {self.user_title}, repite.")
 
         if self.state == "awaiting_confirmation":
             return await self._handle_confirmation(text)
@@ -163,14 +174,14 @@ class Brain:
                 self._pending_prompt = prompt
                 self.state = "awaiting_confirmation"
                 return BrainResponse(
-                    speech=f"Le propongo esto a Claude: {prompt}. ¿Se lo mando, Sir Rich?"
+                    speech=f"Le propongo esto a Claude: {prompt}. ¿Se lo mando, {self.user_title}?"
                 )
 
             if name == "switch_project":
                 proj = (args.get("project_name") or "").strip()
                 self.state = "idle"
                 return BrainResponse(
-                    speech=f"Cambiando al proyecto {proj}, Sir Rich.",
+                    speech=f"Cambiando al proyecto {proj}, {self.user_title}.",
                     switch_project=proj,
                 )
 
@@ -187,9 +198,9 @@ class Brain:
                 continue
 
             # tool desconocido
-            return BrainResponse(speech="No supe procesar eso, Sir Rich.")
+            return BrainResponse(speech=f"No supe procesar eso, {self.user_title}.")
 
-        return BrainResponse(speech="Me enrede pensando, Sir Rich. Reintenta.")
+        return BrainResponse(speech=f"Me enrede pensando, {self.user_title}. Reintenta.")
 
     async def _handle_confirmation(self, text: str) -> BrainResponse:
         if is_affirmative(text):
@@ -205,8 +216,9 @@ class Brain:
         return await self._run_tool_loop()
 
     async def summarize_claude(self, claude_text: str) -> str:
+        system = SUMMARY_SYSTEM_PROMPT.replace("{user_title}", self.user_title)
         messages = [
-            {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": claude_text},
         ]
         msg = await self.client.chat(messages)

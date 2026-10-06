@@ -1,31 +1,61 @@
-# Jeffri — Guia para Claude
+# Jeffri — Guia para Claude Code (auto-instalacion asistida)
 
-Este archivo te guia (a ti, Claude) para auto-instalar este proyecto en una PC nueva. Si el usuario te dice "instalame Jeffri" o "configura este repo", sigue estos pasos en orden.
+Este archivo te guia a ti (**la IA Claude Code**) para instalar Jeffri en la
+PC de un usuario cuando el te lo pida.
 
-## Contexto del proyecto
+## Resumen del proyecto
 
-**Jeffri** es un bot Python que conecta Telegram con Claude Code Desktop. El usuario manda mensajes/voz/fotos por Telegram, Jeffri los recibe en la PC, los procesa (mejora prompts con Groq, transcribe audios con Whisper) y los pega en la ventana activa de Claude Code Desktop. Las respuestas de Claude se reenvian al chat de Telegram.
+**Jeffri** es un bot que conecta Telegram con Claude Code Desktop. El usuario
+le manda mensajes (texto/voz/foto) por Telegram, Jeffri los pule con DeepSeek,
+los pega en Claude Code Desktop via UI automation, y reenvia las respuestas
+de Claude de vuelta a Telegram. Opcionalmente tambien activa un push-to-talk
+F9 para hablarle con voz local (Whisper + Piper).
 
-- Entry point: `src/bot.py`
-- Plataforma: Windows 10/11 (usa pywinauto, win32api, win32clipboard)
-- Python: 3.13+
-- Diseno completo: `docs/plans/2026-05-13-telegram-claude-bridge-design.md`
+- **Plataforma**: Windows 10/11 (usa `pywinauto`, `win32api`, `win32clipboard`,
+  `winocr`). Linux/Mac NO soportados.
+- **Python**: 3.13+.
+- **Entry point recomendado**: `python -m src.main` (Telegram + voz).
+- **Alternativa sin voz**: `python -m src.bot`.
 
-## Instrucciones de auto-instalacion
+## Flujo de auto-instalacion
 
-Si el usuario pide instalar el proyecto, ejecuta estos pasos. Pide confirmacion antes de cada paso destructivo o cuando necesites informacion del usuario.
+Cuando el usuario te diga *"instalame Jeffri"*, *"configura Jeffri en mi PC"*
+o algo equivalente, sigue estos pasos **en orden**. Pide confirmacion antes
+de pasos destructivos o cuando necesites un dato que solo el usuario tiene.
 
-### Paso 1: Verificar requisitos
+### Paso 1 — Verificar requisitos
 
 ```powershell
-python --version       # Debe ser 3.13 o mayor
-where claude           # Debe existir Claude Code Desktop
+python --version
+```
+Debe decir `Python 3.13.x` o superior. Si falta o es menor, pide al usuario
+que lo instale desde https://www.python.org/downloads/ (Windows installer,
+marcar "Add Python to PATH").
+
+```powershell
+Test-Path "$env:LOCALAPPDATA\Programs\claude-code"
+```
+Si devuelve `False`, Claude Code Desktop no esta instalado. Pide al usuario
+que lo instale desde https://claude.com/download.
+
+```powershell
+Test-Path "$env:USERPROFILE\.claude\projects"
+```
+Debe devolver `True`. Si no, el usuario nunca abrio Claude Code Desktop —
+pidele que lo abra una vez.
+
+### Paso 2 — Clonar el repo
+
+Si ya estas dentro del repo (el usuario clono manualmente), salta este paso.
+Si no:
+
+```powershell
+cd $env:USERPROFILE\Desktop
+git clone https://github.com/therichkidcl-spec/jeffri-mayordomo-automatico.git
+cd jeffri-mayordomo-automatico
 ```
 
-Si Python falta, pide al usuario que lo instale desde https://www.python.org/downloads/.
-Si Claude Code Desktop falta, pide que lo instale desde https://claude.com/download.
-
-### Paso 2: Setup del entorno
+### Paso 3 — Crear entorno virtual e instalar dependencias
 
 ```powershell
 python -m venv .venv
@@ -33,80 +63,127 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Si PowerShell rechaza el activate por politica de ejecucion:
+Si PowerShell bloquea el activate, el usuario necesita una sola vez:
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
-### Paso 3: Configurar `.env`
+### Paso 4 — Configurar `.env`
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Pide al usuario:
-1. El **token del bot de Telegram** (lo obtiene de @BotFather con `/newbot`).
-2. Su **user_id de Telegram** (lo obtiene de @userinfobot con `/start`).
-3. (Opcional) **API keys de Groq** separadas por coma (de https://console.groq.com/keys).
+Ahora **pide al usuario los siguientes datos** y edita `.env`:
 
-Edita `.env` con esos valores. Confirma que `CLAUDE_PROJECTS_DIR` apunta a la carpeta `.claude/projects` del usuario (tipicamente `C:\Users\<USUARIO>\.claude\projects`).
+1. **Token del bot de Telegram** (`TELEGRAM_BOT_TOKEN`).
+   Instrucciones para el usuario:
+   > *"En Telegram abre @BotFather, escribe `/newbot`, elige nombre y
+   > username (debe terminar en 'bot'). Te dara un token tipo
+   > `123456789:ABC-DEF...`. Pegamelo aqui."*
 
-### Paso 4: Verificar la instalacion
+2. **User_id de Telegram** (`TELEGRAM_ALLOWED_USER_ID`).
+   > *"En Telegram abre @userinfobot y escribe `/start`. Te dara un numero
+   > de ~10 digitos. Pegamelo aqui."*
+
+3. **Ruta de proyectos de Claude** (`CLAUDE_PROJECTS_DIR`).
+   Puedes autocompletarla con el user actual:
+   ```powershell
+   "$env:USERPROFILE\.claude\projects"
+   ```
+   Verifica que exista y usala.
+
+4. **DeepSeek API key** (`DEEPSEEK_API_KEY`, opcional pero recomendado).
+   > *"Para que Jeffri pula tus mensajes antes de pegarlos en Claude,
+   > necesita una API key de DeepSeek. Es gratis crear cuenta en
+   > https://platform.deepseek.com/api_keys. ¿Quieres saltarte esto por ahora?
+   > Si saltas, el bot pega los mensajes crudos (igual funciona)."*
+
+Nunca inventes valores; siempre pide al usuario que te los pase. Usa
+`Edit` tool para ir rellenando `.env` campo por campo.
+
+### Paso 5 — Verificar la instalacion
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -v
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Debe pasar 48 tests. Si alguno falla, revisa el error y corrige antes de continuar.
+Debe decir `142 passed`. Si algun test falla, lee el output y arregla antes
+de continuar — probablemente es un valor mal puesto en `.env` o una
+dependencia que no instalo bien.
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import src.bot; print('Import OK')"
 ```
 
-Debe imprimir `Import OK`. Si falla, hay un problema con `.env` o las dependencias.
+Debe imprimir `Import OK` precedido por un log que diga `DeepSeek habilitado`
+(si pusiste la API key). Si falla, hay un error de config.
 
-### Paso 5: Primera ejecucion
+### Paso 6 — Primera ejecucion
 
-Dile al usuario que:
-1. **Abra Claude Code Desktop** en cualquier sesion que NO sea esta misma (para no crear loop).
-2. **Doble-click en `run.bat`** o ejecutar `.\.venv\Scripts\python.exe -m src.bot` desde terminal.
-3. **En Telegram, mandar `/start`** al bot. Debe responder con la sesion activa.
+Dile al usuario:
 
-Si todo eso funciona, la instalacion esta completa.
+1. **Abre Claude Code Desktop** en cualquier sesion que NO sea la actual
+   (si lo instalaste tu mismo guiando al usuario, salte esa sesion).
+2. **Doble-click en `run.bat`** O desde terminal:
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   python -m src.main
+   ```
+3. **En Telegram, mandale `/start` al bot que creaste**. Jeffri te preguntara
+   como quieres que te trate — responde con tu titulo honorifico preferido
+   (`Sir Smith`, `Jefa`, `Doctor`, lo que quieras).
+
+Si Jeffri responde con un saludo que te menciona por tu titulo, la
+instalacion termino.
 
 ## Convenciones del codigo
 
 ### Idioma
-- **El usuario habla espanol latino neutro con "tu"** (no voseo argentino).
-- **El usuario quiere ser tratado como "Sir Rich"** en respuestas.
-- Comentarios en codigo pueden ir en espanol o ingles indistintamente.
-- **Nada de voseo**: prohibido "vos", "tenes", "queres", "podes", "dale", "che", "andate", "mira" como imperativo, etc. Usa "tu tienes", "tu quieres", "tu puedes", "tu haces".
+- El bot comunica en **espanol latino con "tu"** (nunca voseo argentino).
+- Comentarios en codigo: espanol o ingles indistintamente.
+- Prohibido: `vos`, `tenes`, `queres`, `podes`, `dale`, `che`, etc. Usa `tu
+  tienes`, `tu puedes`, `tu haces`.
+- Tono del bot: mayordomo sumiso. Nunca uses "Sir Rich" ni ningun titulo
+  hardcoded — usa `state.address()` que resuelve el titulo que el usuario
+  configuro (fallback: `"mi senor"`).
 
 ### Estructura
 ```
 src/
-├── bot.py                  # entrypoint, handlers Telegram
-├── config.py               # carga .env
-├── claude_controller.py    # UI automation + OCR + click
-├── transcript_watcher.py   # vigila .jsonl
-├── formatters.py           # eventos JSON → mensajes Telegram
-├── groq_client.py          # enhancer + Whisper
-├── security.py             # whitelist + deteccion destructiva
-└── session_detector.py     # detecta sesion activa + proyectos
+├── bot.py                  entrypoint Telegram + handlers
+├── main.py                 entrypoint unificado (Telegram + voz)
+├── config.py               carga .env
+├── user_settings.py        persistencia del titulo honorifico
+├── enhancer.py             DeepSeek V4.1-Flash para pulir prompts
+├── stt.py                  faster-whisper local para transcribir audio
+├── voice/                  loop de voz F9 (DeepSeek + Piper)
+├── claude_controller.py    pywinauto + OCR + click en Claude Desktop
+├── transcript_watcher.py   watchdog sobre .jsonl de Claude
+├── formatters.py           eventos → mensajes de Telegram
+├── session_detector.py     que sesion/proyecto usar
+├── security.py             whitelist + deteccion destructiva
+├── pidfile.py              single-instance lock
+└── groq_client.py          (dead code — se dejo por si vuelven a usarlo)
 tests/
-docs/plans/                 # diseno y plan original
+docs/plans/                 diseno y planes historicos
 ```
 
-### Patron de tests
-TDD por modulo. Tests en `tests/test_<modulo>.py`. Usa `monkeypatch` para variables de entorno y `tmp_path` para archivos.
+### Tests
+TDD por modulo. Tests en `tests/test_<modulo>.py`. Usa `monkeypatch` para
+env vars y `tmp_path` para archivos.
 
-### Subprocesos UI
-Todas las operaciones de pywinauto/clipboard/click corren en threads via `asyncio.to_thread`. Nunca bloquees el loop de asyncio con calls sincronos de UI.
+### Threads vs asyncio
+Todas las operaciones de UI (pywinauto, clipboard, OCR, win32) corren en
+threads via `asyncio.to_thread`. **Nunca bloquees el loop de asyncio** con
+operaciones sincronas de UI.
 
 ### Sin API keys de Anthropic
-Este bot usa el plan Max via Claude Code Desktop. NO usa ANTHROPIC_API_KEY. Si el usuario intenta configurarla, dile que no hace falta.
+Jeffri usa el plan Max del usuario via Claude Code Desktop. **NO usa
+`ANTHROPIC_API_KEY`**. Si el usuario intenta configurarla, dile que no hace
+falta.
 
-## Comandos utiles para mantenimiento
+## Comandos utiles de mantenimiento
 
 ```powershell
 # Tests rapidos
@@ -116,41 +193,52 @@ Este bot usa el plan Max via Claude Code Desktop. NO usa ANTHROPIC_API_KEY. Si e
 .\.venv\Scripts\python.exe -m pytest -v
 
 # Solo un modulo
-.\.venv\Scripts\python.exe -m pytest tests/test_formatters.py -v
+.\.venv\Scripts\python.exe -m pytest tests/test_enhancer.py -v
 
-# Arrancar el bot
+# Arrancar bot (Telegram + voz)
+.\.venv\Scripts\python.exe -m src.main
+
+# Arrancar bot (solo Telegram)
 .\.venv\Scripts\python.exe -m src.bot
 
 # Verificar import sin arrancar
 .\.venv\Scripts\python.exe -c "import src.bot; print('OK')"
 ```
 
-## Cuando el usuario pida features nuevas
+### Si hay que reiniciar el bot
 
-Antes de implementar:
-1. Usa la skill `superpowers:brainstorming` si la feature es no trivial.
-2. Haz un plan corto en un archivo o en `docs/plans/` si es grande.
+El bot NO tiene hot-reload. Para aplicar cambios de codigo:
+
+```powershell
+# 1. Mata los procesos del bot
+Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" | Where-Object { $_.CommandLine -match 'src\.(bot|main)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+# 2. Borra el pidfile (atexit no corre con -Force)
+Remove-Item logs\jeffri.pid -ErrorAction SilentlyContinue
+
+# 3. Arranca de nuevo
+.\.venv\Scripts\python.exe -m src.main
+```
+
+## Cuando el usuario pida features nuevos
+
+1. Si es feature no trivial, usa la skill `superpowers:brainstorming`.
+2. Haz un plan corto en `docs/plans/YYYY-MM-DD-<slug>.md` si es grande.
 3. Confirma con el usuario antes de tocar codigo.
-
-Durante implementacion:
-1. TDD donde sea posible.
-2. Tests deben pasar antes del commit.
-3. Commits descriptivos con `feat:`, `fix:`, `refactor:`, etc.
-4. Cada commit debe dejar el sistema en estado funcional.
+4. TDD donde sea posible. Tests deben pasar antes del commit.
+5. Commits descriptivos (`feat:`, `fix:`, `refactor:`).
+6. Cada commit debe dejar el sistema en estado funcional.
 
 ## Reglas inflexibles
 
-- **NUNCA commitear `.env`**. Si lo ves en `git status`, aborta inmediatamente.
-- **NUNCA logear el token de Telegram en plain text**. Truncalo (`token[:10]+"..."+token[-4:]`).
+- **NUNCA commitees `.env`**. Si lo ves en `git status`, aborta.
+- **NUNCA commitees `data/user_settings.json`** — es local del usuario.
+- **NUNCA logees el token de Telegram en plain text**. Truncalo
+  (`token[:10]+"..."+token[-4:]`).
 - **NUNCA push a `main`/`master`** sin confirmacion explicita del usuario.
-- **NUNCA usar voseo argentino** al hablar con el usuario.
-- **SIEMPRE tratar al usuario como "Sir Rich"** en mensajes generados para el.
-
-## Estado actual del proyecto
-
-Version: v1 funcional, todos los modulos integrados.
-Ultima verificacion: 48/48 tests pasan.
-Plataforma probada: Windows 11 con Python 3.14, Claude Code Desktop 2.1.x.
+- **NUNCA uses voseo argentino** al hablar con el usuario.
+- **NUNCA hardcodes un titulo honorifico**. Usa `state.address()` o
+  `self.user_title`.
 
 ---
 

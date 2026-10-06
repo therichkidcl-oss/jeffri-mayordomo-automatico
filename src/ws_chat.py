@@ -27,7 +27,7 @@ async def handle_chat_ws(websocket: WebSocket, bot_state):
             await websocket.close(code=4001)
             return
 
-    await websocket.send_json({"type": "welcome", "message": "Bienvenido, Sir Rich"})
+    await websocket.send_json({"type": "welcome", "message": f"Bienvenido, {bot_state.address()}"})
 
     try:
         while True:
@@ -62,14 +62,14 @@ async def _handle_user_text(data: dict, websocket: WebSocket, bot_state):
         })
         return
 
-    if bot_state.groq is None or not bot_state.enhancer_enabled:
+    if bot_state.enhancer is None or not bot_state.enhancer_enabled:
         await _do_send_to_claude(text, websocket, bot_state)
         return
 
     try:
-        enhanced = await bot_state.groq.enhance_prompt(text, source="texto")
+        enhanced = await bot_state.enhancer.enhance(text, source="texto", user_title=bot_state.address())
     except Exception as e:
-        logger.warning(f"Groq fallo: {e}, mando original")
+        logger.warning(f"DeepSeek fallo: {e}, mando original")
         await _do_send_to_claude(text, websocket, bot_state)
         return
 

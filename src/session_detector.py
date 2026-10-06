@@ -16,11 +16,10 @@ class SessionInfo:
 
     @property
     def decoded_path(self) -> str:
+        # Claude Code codifica cada "\" como "-" en el nombre de carpeta, lo que
+        # pierde los espacios del path original. Este decode es best-effort.
         decoded = self.folder_name.replace("C--", "C:\\").replace("-", "\\")
-        return decoded.replace("\\\\", "\\").replace("\\ ", " ").replace(
-            "C:\\Users\\Reimo\\Desktop\\pyton\\pantalla",
-            "C:\\Users\\Reimo\\Desktop\\pyton pantalla",
-        )
+        return decoded.replace("\\\\", "\\").replace("\\ ", " ")
 
 
 @dataclass
@@ -78,7 +77,15 @@ def _folder_display_name(folder_path: Path) -> str:
     if name.startswith("C--"):
         name = name[3:]
     parts = name.split("-")
-    while parts and parts[0] in ("Users", "Reimo", "Desktop", "Documents", "Downloads", "Pictures"):
+    # Primer segmento siempre es "Users"; el siguiente es el nombre del
+    # usuario (variable por maquina); los siguientes suelen ser una carpeta
+    # standar. Los descartamos para quedarnos con el nombre del proyecto.
+    _COMMON_ROOTS = {"Desktop", "Documents", "Downloads", "Pictures", "code", "src", "repos"}
+    if parts and parts[0] == "Users":
+        parts.pop(0)
+        if parts:  # nombre de usuario
+            parts.pop(0)
+    while parts and parts[0] in _COMMON_ROOTS:
         parts.pop(0)
     return " ".join(parts) if parts else folder_path.name
 
